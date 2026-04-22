@@ -12,7 +12,7 @@ function initDisplayPage() {
   const displayState = document.getElementById("display-state");
 
   let currentState = {
-    current_scene_id: null,
+    current_scene: null,
     current_music_playlist: null,
     active_ambiences: {},
     fade_settings: {},
@@ -26,11 +26,11 @@ function initDisplayPage() {
    */
   function renderState(state) {
     if (displayScene) {
-      displayScene.textContent = state.current_scene_id ?? "None";
+      displayScene.textContent = state.current_scene?.scene_id ?? "None";
     }
 
     if (displayMusic) {
-      displayMusic.textContent = state.current_music_playlist ?? "None";
+      displayMusic.textContent = state.current_music_playlist?.playlist_id ?? "None";
     }
 
     if (displayState) {
@@ -63,7 +63,7 @@ function initDisplayPage() {
     const data = JSON.parse(event.data);
     console.log("Scene changed:", data);
     applyStatePatch({
-      current_scene_id: data.scene_id,
+      current_scene: data.scene,
     });
   });
 
@@ -88,6 +88,26 @@ function initDisplayPage() {
     console.log("Fade settings changed:", data);
     applyStatePatch({
       fade_settings: data.fade_settings,
+    });
+  });
+
+  eventSource.addEventListener("volume_changed", (event) => {
+    const data = JSON.parse(event.data);
+    console.log("Volume changed:", data);
+    applyStatePatch({
+      current_music_playlist: {
+        ...(currentState.current_music_playlist ?? {}),
+        volume: data.music_volume ?? 1.0,
+      },
+      active_ambiences: Object.fromEntries(
+        Object.entries(currentState.active_ambiences ?? {}).map(([ambienceId, ambience]) => [
+          ambienceId,
+          {
+            ...ambience,
+            volume: data.ambience_volumes?.[ambienceId] ?? ambience.volume ?? 1.0,
+          },
+        ])
+      ),
     });
   });
 
