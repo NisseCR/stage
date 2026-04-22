@@ -111,6 +111,7 @@ class AudioEngine {
     }
 
     if (this.musicPlaylistId !== playlistId) {
+      console.log("[audio] switching playlist:", playlistId, playlist.tracks.map((track) => track.url));
       this.musicPlaylistId = playlistId;
       await this.musicController.switchPlaylist(playlist.tracks, volume ?? 1.0, fadeSeconds);
       return;
@@ -252,7 +253,6 @@ class PlaylistController {
     this.tracks = [];
     this.queue = [];
     this.currentTrackIndex = -1;
-    this.currentTrackUrl = null;
     this.currentVolume = 1.0;
     this.isStopping = false;
     this.token = 0;
@@ -281,6 +281,7 @@ class PlaylistController {
     }
 
     const nextTrack = this.queue[this.currentTrackIndex];
+    console.log("[audio] starting playlist with track:", nextTrack.url);
 
     await this.trackController.fadeTo(0.0, fadeSeconds);
     if (switchToken !== this.token) {
@@ -292,12 +293,9 @@ class PlaylistController {
       return;
     }
 
-    await this.trackController.fadeTo(this.currentVolume, fadeSeconds);
-    if (switchToken !== this.token) {
-      return;
-    }
+    this.bindTrackEnd(switchToken);
 
-    this.bindTrackEnd(nextTrack);
+    await this.trackController.fadeTo(this.currentVolume, fadeSeconds);
   }
 
   /**
@@ -314,6 +312,8 @@ class PlaylistController {
 
   /**
    * Advance to the next track in the current shuffled order.
+   *
+   * When the end of the queue is reached, reshuffle and start from the beginning.
    */
   async playNextTrack() {
     if (this.isStopping || this.queue.length === 0) {
@@ -328,9 +328,11 @@ class PlaylistController {
     }
 
     const nextTrack = this.queue[this.currentTrackIndex];
+    console.log("[audio] advancing to next track:", nextTrack.url);
+
     await this.trackController.setSource(nextTrack.url);
     await this.trackController.fadeTo(this.currentVolume, 0.15);
-    this.bindTrackEnd(nextTrack);
+    this.bindTrackEnd(this.token);
   }
 
   /**
@@ -348,24 +350,21 @@ class PlaylistController {
     this.queue = [];
     this.tracks = [];
     this.currentTrackIndex = -1;
-    this.currentTrackUrl = null;
   }
 
   /**
    * Bind the end handler for the currently playing track.
    *
    * Args:
-   *   track: The track currently being played.
+   *   tokenAtBind: The controller token at bind time.
    */
-  bindTrackEnd(track) {
-    this.currentTrackUrl = track.url;
-
+  bindTrackEnd(tokenAtBind) {
     if (!this.trackController.audioElement) {
       return;
     }
 
     this.trackController.audioElement.onended = async () => {
-      if (this.isStopping) {
+      if (this.isStopping || tokenAtBind !== this.token) {
         return;
       }
 
