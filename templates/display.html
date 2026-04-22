@@ -5,7 +5,13 @@
 {% block content %}
 <main class="page">
   <h1>Display Page</h1>
-  <p>Scene/audio output coming soon.</p>
+
+  <section>
+    <h2>Live State</h2>
+    <p><strong>Scene:</strong> <span id="display-scene">Waiting...</span></p>
+    <p><strong>Music:</strong> <span id="display-music">Waiting...</span></p>
+    <pre id="display-state">No state received yet.</pre>
+  </section>
 </main>
 {% endblock %}
 

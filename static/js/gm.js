@@ -12,7 +12,7 @@ async function initGmPage() {
     fetch("/api/library"),
   ]);
 
-  const currentState = await stateResponse.json();
+  let currentState = await stateResponse.json();
   const library = await libraryResponse.json();
 
   console.log("Current state:", currentState);
@@ -20,6 +20,41 @@ async function initGmPage() {
 
   const sceneList = document.getElementById("scene-list");
   const musicList = document.getElementById("music-list");
+  const currentScene = document.getElementById("current-scene");
+  const currentMusic = document.getElementById("current-music");
+
+  /**
+   * Render the current state into the GM control UI.
+   *
+   * Args:
+   *   state: The latest known application state.
+   */
+  function renderState(state) {
+    if (currentScene) {
+      currentScene.textContent = state.current_scene_id ?? "None";
+    }
+
+    if (currentMusic) {
+      currentMusic.textContent = state.current_music_playlist ?? "None";
+    }
+
+    setActiveButtonState(sceneList, state.current_scene_id);
+    setActiveButtonState(musicList, state.current_music_playlist);
+  }
+
+  /**
+   * Merge a partial state update into the current state and re-render.
+   *
+   * Args:
+   *   patch: The partial update returned by the backend.
+   */
+  function applyStatePatch(patch) {
+    currentState = {
+      ...currentState,
+      ...patch,
+    };
+    renderState(currentState);
+  }
 
   if (sceneList) {
     sceneList.innerHTML = "";
@@ -27,8 +62,10 @@ async function initGmPage() {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = scene.name;
-      button.addEventListener("click", () => {
-        setScene(scene.id);
+      button.dataset.value = scene.id;
+      button.addEventListener("click", async () => {
+        const updatedState = await setScene(scene.id);
+        applyStatePatch(updatedState);
       });
       sceneList.appendChild(button);
     });
@@ -40,12 +77,33 @@ async function initGmPage() {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = playlist.name;
-      button.addEventListener("click", () => {
-        setMusic(playlist.id);
+      button.dataset.value = playlist.id;
+      button.addEventListener("click", async () => {
+        const updatedState = await setMusic(playlist.id);
+        applyStatePatch(updatedState);
       });
       musicList.appendChild(button);
     });
   }
+
+  renderState(currentState);
+}
+
+/**
+ * Toggle active button styling within a container.
+ *
+ * Args:
+ *   container: The element containing selectable buttons.
+ *   activeValue: The currently active value.
+ */
+function setActiveButtonState(container, activeValue) {
+  if (!container) {
+    return;
+  }
+
+  container.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.value === activeValue);
+  });
 }
 
 /**
@@ -85,6 +143,7 @@ async function setScene(sceneId) {
     scene_id: sceneId,
   });
   console.log("Scene updated:", updatedState);
+  return updatedState;
 }
 
 /**
@@ -98,6 +157,7 @@ async function setMusic(musicPlaylistId) {
     music_playlist: musicPlaylistId,
   });
   console.log("Music updated:", updatedState);
+  return updatedState;
 }
 
 document.addEventListener("DOMContentLoaded", initGmPage);
