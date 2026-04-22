@@ -174,10 +174,7 @@ async def set_ambience(request: Request, body: AmbienceUpdateRequest) -> StateRe
     """
     Update the active ambience map and broadcast the change.
     """
-    request.app.state.app_state.active_ambiences = {
-        ambience_id: ActiveAmbience(ambience_id=ambience_id, volume=volume)
-        for ambience_id, volume in body.active_ambiences.items()
-    }
+    request.app.state.app_state.active_ambiences = body.active_ambiences
 
     await request.app.state.event_service.broadcast(
         "ambience_changed",

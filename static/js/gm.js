@@ -25,8 +25,6 @@ async function initGmPage() {
   const currentScene = document.getElementById("current-scene");
   const currentMusic = document.getElementById("current-music");
   const currentMusicVolume = document.getElementById("current-music-volume");
-  const currentAmbienceVolume = document.getElementById("current-ambience-volume");
-  const currentSceneVolume = document.getElementById("current-scene-volume");
 
   const fadeMusic = document.getElementById("fade-music");
   const fadeAmbience = document.getElementById("fade-ambience");
@@ -34,8 +32,6 @@ async function initGmPage() {
   const saveFadeSettingsButton = document.getElementById("save-fade-settings");
 
   const volumeMusic = document.getElementById("volume-music");
-  const volumeAmbience = document.getElementById("volume-ambience");
-  const volumeScene = document.getElementById("volume-scene");
   const saveVolumesButton = document.getElementById("save-volumes");
 
   /**
@@ -57,19 +53,6 @@ async function initGmPage() {
       currentMusicVolume.textContent = String(state.current_music_playlist?.volume ?? 1.0);
     }
 
-    if (currentAmbienceVolume) {
-      const ambiences = Object.values(state.active_ambiences ?? {});
-      const averageVolume =
-        ambiences.length > 0
-          ? ambiences.reduce((sum, ambience) => sum + (ambience.volume ?? 1.0), 0) / ambiences.length
-          : 1.0;
-      currentAmbienceVolume.textContent = String(averageVolume);
-    }
-
-    if (currentSceneVolume) {
-      currentSceneVolume.textContent = String(state.current_scene?.opacity ?? 1.0);
-    }
-
     if (fadeMusic) {
       fadeMusic.value = state.fade_settings?.music ?? 5.0;
     }
@@ -86,22 +69,9 @@ async function initGmPage() {
       volumeMusic.value = state.current_music_playlist?.volume ?? 1.0;
     }
 
-    if (volumeAmbience) {
-      const ambiences = Object.values(state.active_ambiences ?? {});
-      const averageVolume =
-        ambiences.length > 0
-          ? ambiences.reduce((sum, ambience) => sum + (ambience.volume ?? 1.0), 0) / ambiences.length
-          : 1.0;
-      volumeAmbience.value = averageVolume;
-    }
-
-    if (volumeScene) {
-      volumeScene.value = state.current_scene?.opacity ?? 1.0;
-    }
-
     setActiveButtonState(sceneList, state.current_scene?.scene_id ?? null);
     setActiveButtonState(musicList, state.current_music_playlist?.playlist_id ?? null);
-    setAmbienceToggleState(state.active_ambiences ?? {});
+    renderAmbienceControls(state.active_ambiences ?? {});
   }
 
   /**
@@ -136,18 +106,86 @@ async function initGmPage() {
   }
 
   /**
-   * Toggle active styling for ambience buttons.
+   * Render ambience toggles and per-item volume controls.
    *
    * Args:
    *   activeAmbiences: The ambience map from application state.
    */
-  function setAmbienceToggleState(activeAmbiences) {
+  function renderAmbienceControls(activeAmbiences) {
     if (!ambienceList) {
       return;
     }
 
-    ambienceList.querySelectorAll("button").forEach((button) => {
-      button.classList.toggle("active", Boolean(activeAmbiences[button.dataset.value]));
+    ambienceList.innerHTML = "";
+
+    library.ambience_folders.forEach((folder) => {
+      folder.tracks.forEach((track) => {
+        const ambienceId = track.name;
+        const activeAmbience = activeAmbiences[ambienceId] ?? null;
+        const isActive = Boolean(activeAmbience);
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "ambience-control";
+
+        const toggleButton = document.createElement("button");
+        toggleButton.type = "button";
+        toggleButton.textContent = isActive ? `Remove ${track.name}` : `Add ${track.name}`;
+        toggleButton.dataset.value = ambienceId;
+        toggleButton.classList.toggle("active", isActive);
+
+        toggleButton.addEventListener("click", async () => {
+          const nextAmbiences = {
+            ...(currentState.active_ambiences ?? {}),
+          };
+
+          if (nextAmbiences[ambienceId]) {
+            delete nextAmbiences[ambienceId];
+          } else {
+            nextAmbiences[ambienceId] = {
+              ambience_id: ambienceId,
+              volume: 1.0,
+            };
+          }
+
+          const updatedState = await setAmbiences(nextAmbiences);
+          applyStatePatch(updatedState);
+        });
+
+        wrapper.appendChild(toggleButton);
+
+        if (isActive) {
+          const volumeLabel = document.createElement("label");
+          volumeLabel.textContent = `${track.name} volume`;
+          volumeLabel.htmlFor = `ambience-volume-${ambienceId}`;
+
+          const volumeInput = document.createElement("input");
+          volumeInput.type = "range";
+          volumeInput.id = `ambience-volume-${ambienceId}`;
+          volumeInput.min = "0";
+          volumeInput.max = "1";
+          volumeInput.step = "0.01";
+          volumeInput.value = activeAmbience.volume ?? 1.0;
+
+          volumeInput.addEventListener("input", () => {
+            currentState = {
+              ...currentState,
+              active_ambiences: {
+                ...(currentState.active_ambiences ?? {}),
+                [ambienceId]: {
+                  ...(currentState.active_ambiences?.[ambienceId] ?? {}),
+                  ambience_id: ambienceId,
+                  volume: Number(volumeInput.value),
+                },
+              },
+            };
+          });
+
+          wrapper.appendChild(volumeLabel);
+          wrapper.appendChild(volumeInput);
+        }
+
+        ambienceList.appendChild(wrapper);
+      });
     });
   }
 
@@ -209,7 +247,7 @@ async function initGmPage() {
    * Update the active ambience map in the backend.
    *
    * Args:
-   *   activeAmbiences: The ambience id -> volume mapping.
+   *   activeAmbiences: The ambience id -> active ambience object mapping.
    */
   async function setAmbiences(activeAmbiences) {
     const updatedState = await postJson("/api/state/ambience", {
@@ -275,39 +313,6 @@ async function initGmPage() {
     });
   }
 
-  if (ambienceList) {
-    ambienceList.innerHTML = "";
-
-    library.ambience_folders.forEach((folder) => {
-      folder.tracks.forEach((track) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = track.name;
-        button.dataset.value = track.name;
-
-        button.addEventListener("click", async () => {
-          const nextAmbiences = {
-            ...(currentState.active_ambiences ?? {}),
-          };
-
-          if (nextAmbiences[track.name]) {
-            delete nextAmbiences[track.name];
-          } else {
-            nextAmbiences[track.name] = {
-              ambience_id: track.name,
-              volume: 1.0,
-            };
-          }
-
-          const updatedState = await setAmbiences(nextAmbiences);
-          applyStatePatch(updatedState);
-        });
-
-        ambienceList.appendChild(button);
-      });
-    });
-  }
-
   if (saveFadeSettingsButton && fadeMusic && fadeAmbience && fadeScene) {
     saveFadeSettingsButton.addEventListener("click", async () => {
       const updatedState = await setFadeSettings({
@@ -319,12 +324,11 @@ async function initGmPage() {
     });
   }
 
-  if (saveVolumesButton && volumeMusic && volumeAmbience && volumeScene) {
+  if (saveVolumesButton && volumeMusic) {
     saveVolumesButton.addEventListener("click", async () => {
-      const activeAmbiences = currentState.active_ambiences ?? {};
       const ambienceVolumes = {};
 
-      Object.entries(activeAmbiences).forEach(([ambienceId, ambience]) => {
+      Object.entries(currentState.active_ambiences ?? {}).forEach(([ambienceId, ambience]) => {
         ambienceVolumes[ambienceId] = ambience.volume ?? 1.0;
       });
 

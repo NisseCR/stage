@@ -17,12 +17,21 @@ class MusicUpdateRequest(BaseModel):
     music_playlist: str | None
 
 
+class ActiveAmbience(BaseModel):
+    """
+    Represent an active ambience item and its runtime settings.
+    """
+
+    ambience_id: str
+    volume: float = 1.0
+
+
 class AmbienceUpdateRequest(BaseModel):
     """
     Represent a request to change the active ambience set.
     """
 
-    active_ambiences: dict[str, float]
+    active_ambiences: dict[str, ActiveAmbience]
 
 
 class FadeUpdateRequest(BaseModel):
@@ -49,15 +58,6 @@ class ActivePlaylist(BaseModel):
     """
 
     playlist_id: str
-    volume: float = 1.0
-
-
-class ActiveAmbience(BaseModel):
-    """
-    Represent an active ambience item and its runtime settings.
-    """
-
-    ambience_id: str
     volume: float = 1.0
 
 
