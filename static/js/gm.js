@@ -32,7 +32,6 @@ async function initGmPage() {
   const saveFadeSettingsButton = document.getElementById("save-fade-settings");
 
   const volumeMusic = document.getElementById("volume-music");
-  const saveVolumesButton = document.getElementById("save-volumes");
 
   /**
    * Render the current state into the GM control UI.
@@ -166,18 +165,18 @@ async function initGmPage() {
           volumeInput.step = "0.01";
           volumeInput.value = activeAmbience.volume ?? 1.0;
 
-          volumeInput.addEventListener("input", () => {
-            currentState = {
-              ...currentState,
-              active_ambiences: {
-                ...(currentState.active_ambiences ?? {}),
-                [ambienceId]: {
-                  ...(currentState.active_ambiences?.[ambienceId] ?? {}),
-                  ambience_id: ambienceId,
-                  volume: Number(volumeInput.value),
-                },
+          volumeInput.addEventListener("change", async () => {
+            const updatedAmbiences = {
+              ...(currentState.active_ambiences ?? {}),
+              [ambienceId]: {
+                ...(currentState.active_ambiences?.[ambienceId] ?? {}),
+                ambience_id: ambienceId,
+                volume: Number(volumeInput.value),
               },
             };
+
+            const updatedState = await setAmbiences(updatedAmbiences);
+            applyStatePatch(updatedState);
           });
 
           wrapper.appendChild(volumeLabel);
@@ -324,8 +323,8 @@ async function initGmPage() {
     });
   }
 
-  if (saveVolumesButton && volumeMusic) {
-    saveVolumesButton.addEventListener("click", async () => {
+  if (volumeMusic) {
+    volumeMusic.addEventListener("change", async () => {
       const ambienceVolumes = {};
 
       Object.entries(currentState.active_ambiences ?? {}).forEach(([ambienceId, ambience]) => {
@@ -336,6 +335,7 @@ async function initGmPage() {
         music_volume: Number(volumeMusic.value),
         ambience_volumes: ambienceVolumes,
       });
+
       applyStatePatch(updatedState);
     });
   }

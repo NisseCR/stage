@@ -94,20 +94,10 @@ function initDisplayPage() {
   eventSource.addEventListener("volume_changed", (event) => {
     const data = JSON.parse(event.data);
     console.log("Volume changed:", data);
+
     applyStatePatch({
-      current_music_playlist: {
-        ...(currentState.current_music_playlist ?? {}),
-        volume: data.music_volume ?? 1.0,
-      },
-      active_ambiences: Object.fromEntries(
-        Object.entries(currentState.active_ambiences ?? {}).map(([ambienceId, ambience]) => [
-          ambienceId,
-          {
-            ...ambience,
-            volume: data.ambience_volumes?.[ambienceId] ?? ambience.volume ?? 1.0,
-          },
-        ])
-      ),
+      current_music_playlist: data.music_playlist ?? currentState.current_music_playlist,
+      active_ambiences: data.active_ambiences ?? currentState.active_ambiences,
     });
   });
 
