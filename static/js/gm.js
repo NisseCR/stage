@@ -74,6 +74,17 @@ async function initGmPage() {
   }
 
   /**
+   * Replace the current state with a newer copy and re-render.
+   *
+   * Args:
+   *   nextState: The updated application state.
+   */
+  function applyFullState(nextState) {
+    currentState = nextState;
+    renderState(currentState);
+  }
+
+  /**
    * Merge a partial state update into the current state and re-render.
    *
    * Args:
@@ -147,7 +158,7 @@ async function initGmPage() {
           }
 
           const updatedState = await setAmbiences(nextAmbiences);
-          applyStatePatch(updatedState);
+          applyFullState(updatedState);
         });
 
         wrapper.appendChild(toggleButton);
@@ -176,7 +187,7 @@ async function initGmPage() {
             };
 
             const updatedState = await setAmbiences(updatedAmbiences);
-            applyStatePatch(updatedState);
+            applyFullState(updatedState);
           });
 
           wrapper.appendChild(volumeLabel);
@@ -291,7 +302,7 @@ async function initGmPage() {
       button.dataset.value = scene.id;
       button.addEventListener("click", async () => {
         const updatedState = await setScene(scene.id);
-        applyStatePatch(updatedState);
+        applyFullState(updatedState);
       });
       sceneList.appendChild(button);
     });
@@ -306,7 +317,7 @@ async function initGmPage() {
       button.dataset.value = playlist.id;
       button.addEventListener("click", async () => {
         const updatedState = await setMusic(playlist.id);
-        applyStatePatch(updatedState);
+        applyFullState(updatedState);
       });
       musicList.appendChild(button);
     });
@@ -319,24 +330,44 @@ async function initGmPage() {
         ambience: Number(fadeAmbience.value),
         scene: Number(fadeScene.value),
       });
-      applyStatePatch(updatedState);
+      applyFullState(updatedState);
     });
   }
 
   if (volumeMusic) {
     volumeMusic.addEventListener("change", async () => {
-      const ambienceVolumes = {};
+      const updatedAmbiences = {};
 
       Object.entries(currentState.active_ambiences ?? {}).forEach(([ambienceId, ambience]) => {
-        ambienceVolumes[ambienceId] = ambience.volume ?? 1.0;
+        updatedAmbiences[ambienceId] = {
+          ...ambience,
+          ambience_id: ambienceId,
+          volume: ambience.volume ?? 1.0,
+        };
       });
+
+      const nextState = {
+        ...currentState,
+        current_music_playlist: {
+          ...(currentState.current_music_playlist ?? {}),
+          volume: Number(volumeMusic.value),
+        },
+      };
+
+      currentState = nextState;
+      renderState(currentState);
 
       const updatedState = await setVolumes({
         music_volume: Number(volumeMusic.value),
-        ambience_volumes: ambienceVolumes,
+        ambience_volumes: Object.fromEntries(
+          Object.entries(updatedAmbiences).map(([ambienceId, ambience]) => [
+            ambienceId,
+            ambience.volume ?? 1.0,
+          ])
+        ),
       });
 
-      applyStatePatch(updatedState);
+      applyFullState(updatedState);
     });
   }
 
