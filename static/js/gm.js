@@ -1,7 +1,8 @@
 /**
  * Initialize the GM page behavior.
  *
- * This file will later manage tabs, scene selection, and audio controls.
+ * This page will act as the control surface for scenes, music, ambience, and
+ * other live state changes that are broadcast to the display page.
  */
 async function initGmPage() {
   console.log("GM page loaded");
@@ -47,6 +48,16 @@ async function initGmPage() {
   }
 }
 
+/**
+ * Send a JSON payload to the backend and return the parsed response.
+ *
+ * Args:
+ *   url: The endpoint URL to post to.
+ *   payload: The request body to send as JSON.
+ *
+ * Returns:
+ *   The parsed JSON response body.
+ */
 async function postJson(url, payload) {
   const response = await fetch(url, {
     method: "POST",
@@ -63,6 +74,12 @@ async function postJson(url, payload) {
   return response.json();
 }
 
+/**
+ * Update the currently selected scene in the backend.
+ *
+ * Args:
+ *   sceneId: The selected scene identifier.
+ */
 async function setScene(sceneId) {
   const updatedState = await postJson("/api/state/scene", {
     scene_id: sceneId,
@@ -70,6 +87,12 @@ async function setScene(sceneId) {
   console.log("Scene updated:", updatedState);
 }
 
+/**
+ * Update the currently selected music playlist in the backend.
+ *
+ * Args:
+ *   musicPlaylistId: The selected music playlist identifier.
+ */
 async function setMusic(musicPlaylistId) {
   const updatedState = await postJson("/api/state/music", {
     music_playlist: musicPlaylistId,

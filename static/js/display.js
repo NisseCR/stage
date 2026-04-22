@@ -1,7 +1,8 @@
 /**
  * Initialize the display page behavior.
  *
- * This file will later manage SSE updates, scene rendering, and audio playback.
+ * This page is a read-only listener that receives live updates from the backend
+ * via SSE and will eventually render the active scene and audio state.
  */
 function initDisplayPage() {
   const eventSource = new EventSource("/events");
