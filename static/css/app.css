@@ -24,7 +24,8 @@ body {
 
 .scene-background,
 .scene-layers,
-.scene-fade-overlay {
+.scene-fade-overlay,
+.audio-unlock-overlay {
   position: absolute;
   inset: 0;
 }
@@ -34,6 +35,10 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.scene-background.is-hidden {
+  display: none;
 }
 
 .scene-layers {
@@ -59,6 +64,29 @@ body {
 
 .scene-fade-overlay.is-visible {
   opacity: 1;
+}
+
+.audio-unlock-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  cursor: pointer;
+}
+
+.audio-unlock-overlay.is-hidden {
+  display: none;
+}
+
+.audio-unlock-card {
+  padding: 1.25rem 1.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.6);
+  font-family: monospace;
+  font-size: 1.2rem;
 }
 
 .display-debug {

@@ -20,6 +20,7 @@ async function initDisplayPage() {
   const sceneBackground = document.getElementById("scene-background");
   const sceneLayers = document.getElementById("scene-layers");
   const sceneFadeOverlay = document.getElementById("scene-fade-overlay");
+  const audioUnlockOverlay = document.getElementById("audio-unlock-overlay");
 
   const sceneMap = new Map(
     library.scenes.map((scene) => [scene.id, scene])
@@ -37,7 +38,9 @@ async function initDisplayPage() {
   });
 
   const audioEngine = new window.AudioEngine();
-  await audioEngine.init();
+
+  let audioReady = false;
+  let pendingAudioState = null;
 
   let currentState = {
     current_scene: null,
@@ -141,6 +144,7 @@ async function initDisplayPage() {
     if (sceneBackground) {
       sceneBackground.removeAttribute("src");
       sceneBackground.alt = "Current scene background";
+      sceneBackground.classList.add("is-hidden");
     }
 
     if (sceneLayers) {
@@ -251,6 +255,7 @@ async function initDisplayPage() {
     if (sceneBackground) {
       sceneBackground.src = scene.background;
       sceneBackground.alt = scene.name;
+      sceneBackground.classList.remove("is-hidden");
     }
 
     if (sceneLayers) {
@@ -345,8 +350,61 @@ async function initDisplayPage() {
    *   state: The latest known application state.
    */
   async function updateAudioFromState(state) {
+    if (!audioReady) {
+      pendingAudioState = state;
+      return;
+    }
+
     const resolvedAudio = resolveAudioState(state);
     await audioEngine.syncFromState(state, resolvedAudio);
+  }
+
+  /**
+   * Unlock audio playback after the first user gesture.
+   */
+  async function unlockAudio() {
+    if (audioReady) {
+      return;
+    }
+
+    audioReady = true;
+
+    if (audioUnlockOverlay) {
+      audioUnlockOverlay.classList.add("is-hidden");
+    }
+
+    await audioEngine.init();
+    await audioEngine.ensureRunning();
+
+    if (pendingAudioState) {
+      const stateToApply = pendingAudioState;
+      pendingAudioState = null;
+      await updateAudioFromState(stateToApply);
+    } else {
+      await updateAudioFromState(currentState);
+    }
+  }
+
+  /**
+   * Register the first interaction that unlocks audio.
+   */
+  function bindAudioUnlock() {
+    const unlockOnce = async () => {
+      await unlockAudio();
+      window.removeEventListener("pointerdown", unlockOnce);
+      window.removeEventListener("keydown", unlockOnce);
+      window.removeEventListener("touchstart", unlockOnce);
+    };
+
+    window.addEventListener("pointerdown", unlockOnce, { once: true });
+    window.addEventListener("keydown", unlockOnce, { once: true });
+    window.addEventListener("touchstart", unlockOnce, { once: true });
+  }
+
+  bindAudioUnlock();
+
+  if (audioUnlockOverlay) {
+    audioUnlockOverlay.addEventListener("click", unlockAudio);
   }
 
   eventSource.addEventListener("state_snapshot", async (event) => {

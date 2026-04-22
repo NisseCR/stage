@@ -5,9 +5,14 @@
 {% block content %}
 <main class="display-page">
   <div id="scene-stage" class="scene-stage">
-    <img id="scene-background" class="scene-background" alt="Current scene background">
+    <img id="scene-background" class="scene-background is-hidden" alt="Current scene background">
     <div id="scene-layers" class="scene-layers"></div>
     <div id="scene-fade-overlay" class="scene-fade-overlay"></div>
+    <div id="audio-unlock-overlay" class="audio-unlock-overlay">
+      <div class="audio-unlock-card">
+        <p>Tap for audio</p>
+      </div>
+    </div>
   </div>
 
   <section class="display-debug">
