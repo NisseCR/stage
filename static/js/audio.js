@@ -13,6 +13,8 @@ class AudioEngine {
     this.masterGain = null;
 
     this.musicController = null;
+    this.musicTrackUrl = null;
+
     this.ambienceControllers = new Map();
 
     this.defaultMusicFadeSeconds = 5.0;
@@ -100,9 +102,14 @@ class AudioEngine {
         loop: true,
         kind: "music",
       });
+      this.musicTrackUrl = null;
     }
 
-    await this.musicController.setSource(trackUrl);
+    if (this.musicTrackUrl !== trackUrl) {
+      await this.musicController.setSource(trackUrl);
+      this.musicTrackUrl = trackUrl;
+    }
+
     await this.musicController.fadeTo(volume ?? 1.0, fadeSeconds);
   }
 
@@ -126,7 +133,11 @@ class AudioEngine {
       }
 
       const controller = this.getOrCreateAmbienceController(ambienceId);
-      await controller.setSource(trackUrl);
+
+      if (controller.sourceUrl !== trackUrl) {
+        await controller.setSource(trackUrl);
+      }
+
       await controller.fadeTo(ambience.volume ?? 1.0, fadeSeconds);
     }
 
@@ -180,11 +191,13 @@ class AudioEngine {
    */
   async clearMusic(fadeSeconds = this.defaultMusicFadeSeconds) {
     if (!this.musicController) {
+      this.musicTrackUrl = null;
       return;
     }
 
     await this.musicController.fadeOutAndStop(fadeSeconds);
     this.musicController = null;
+    this.musicTrackUrl = null;
   }
 
   /**
@@ -244,6 +257,8 @@ class FadableTrackController {
 
     this.audioElement = null;
     this.sourceNode = null;
+    this.sourceUrl = null;
+
     this.gainNode = this.audioContext.createGain();
     this.gainNode.gain.value = 0.0;
     this.gainNode.connect(this.outputNode);
@@ -258,8 +273,13 @@ class FadableTrackController {
    *   url: The audio source URL.
    */
   async setSource(url) {
+    if (this.sourceUrl === url && this.audioElement && this.sourceNode) {
+      return;
+    }
+
     await this.stopSource();
 
+    this.sourceUrl = url;
     this.audioElement = new Audio(url);
     this.audioElement.crossOrigin = "anonymous";
     this.audioElement.loop = this.loop;
@@ -339,6 +359,7 @@ class FadableTrackController {
     }
 
     this.audioElement = null;
+    this.sourceUrl = null;
     this.currentFadeTarget = 0.0;
     this.gainNode.gain.value = 0.0;
   }
