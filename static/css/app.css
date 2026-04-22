@@ -20,6 +20,7 @@ body {
   inset: 0;
   overflow: hidden;
   background: #000;
+  cursor: pointer;
 }
 
 .scene-background,
@@ -71,22 +72,54 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 80;
-  background: rgba(0, 0, 0, 0.9);
-  color: #fff;
+  background:
+    radial-gradient(circle at center, rgba(14, 14, 18, 0.82) 0%, rgba(0, 0, 0, 0.95) 72%),
+    rgba(0, 0, 0, 0.9);
+  color: rgba(245, 241, 232, 0.92);
   cursor: pointer;
+  transition: opacity 260ms ease, visibility 260ms ease;
+  backdrop-filter: blur(2px);
 }
 
 .audio-unlock-overlay.is-hidden {
-  display: none;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .audio-unlock-card {
-  padding: 1.25rem 1.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 0.75rem;
-  background: rgba(0, 0, 0, 0.6);
-  font-family: monospace;
-  font-size: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 1rem 1.5rem;
+  background: rgba(10, 10, 12, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 0.6rem;
+  box-shadow: 0 0 34px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  font-family: "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+  letter-spacing: 0.06em;
+}
+
+.audio-unlock-kicker {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  opacity: 0.72;
+}
+
+.audio-unlock-text {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 500;
+}
+
+.audio-unlock-rule {
+  width: 3.5rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  opacity: 0.9;
 }
 
 .display-debug {
