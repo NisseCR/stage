@@ -131,16 +131,11 @@ async def set_scene(request: Request, body: SceneUpdateRequest) -> StateResponse
         if body.scene_id is not None
         else None
     )
+    request.app.state.app_state.revision += 1
 
     await request.app.state.event_service.broadcast(
-        "scene_changed",
-        {
-            "scene": (
-                request.app.state.app_state.current_scene.model_dump()
-                if request.app.state.app_state.current_scene
-                else None
-            ),
-        },
+        "state_updated",
+        request.app.state.app_state.model_dump(),
     )
     return request.app.state.app_state
 
@@ -155,16 +150,11 @@ async def set_music(request: Request, body: MusicUpdateRequest) -> StateResponse
         if body.music_playlist is not None
         else None
     )
+    request.app.state.app_state.revision += 1
 
     await request.app.state.event_service.broadcast(
-        "music_changed",
-        {
-            "music_playlist": (
-                request.app.state.app_state.current_music_playlist.model_dump()
-                if request.app.state.app_state.current_music_playlist
-                else None
-            ),
-        },
+        "state_updated",
+        request.app.state.app_state.model_dump(),
     )
     return request.app.state.app_state
 
@@ -175,15 +165,11 @@ async def set_ambience(request: Request, body: AmbienceUpdateRequest) -> StateRe
     Update the active ambience map and broadcast the change.
     """
     request.app.state.app_state.active_ambiences = body.active_ambiences
+    request.app.state.app_state.revision += 1
 
     await request.app.state.event_service.broadcast(
-        "ambience_changed",
-        {
-            "active_ambiences": {
-                ambience_id: ambience.model_dump()
-                for ambience_id, ambience in request.app.state.app_state.active_ambiences.items()
-            },
-        },
+        "state_updated",
+        request.app.state.app_state.model_dump(),
     )
     return request.app.state.app_state
 
@@ -194,9 +180,11 @@ async def set_fade_settings(request: Request, body: FadeUpdateRequest) -> StateR
     Update fade settings and broadcast the change.
     """
     request.app.state.app_state.fade_settings = body.fade_settings
+    request.app.state.app_state.revision += 1
+
     await request.app.state.event_service.broadcast(
-        "fade_settings_changed",
-        {"fade_settings": body.fade_settings},
+        "state_updated",
+        request.app.state.app_state.model_dump(),
     )
     return request.app.state.app_state
 
@@ -213,18 +201,10 @@ async def set_volumes(request: Request, body: VolumeUpdateRequest) -> StateRespo
         if ambience_id in request.app.state.app_state.active_ambiences:
             request.app.state.app_state.active_ambiences[ambience_id].volume = volume
 
+    request.app.state.app_state.revision += 1
+
     await request.app.state.event_service.broadcast(
-        "volume_changed",
-        {
-            "music_playlist": (
-                request.app.state.app_state.current_music_playlist.model_dump()
-                if request.app.state.app_state.current_music_playlist
-                else None
-            ),
-            "active_ambiences": {
-                ambience_id: ambience.model_dump()
-                for ambience_id, ambience in request.app.state.app_state.active_ambiences.items()
-            },
-        },
+        "state_updated",
+        request.app.state.app_state.model_dump(),
     )
     return request.app.state.app_state

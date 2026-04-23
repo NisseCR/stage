@@ -1,8 +1,12 @@
 /**
- * Manage all audio playback for the display page.
+ * Reconcile the display audio state against the shared application state.
  *
- * This engine uses the Web Audio API so fades and interruptions can be handled
- * smoothly from the current gain level rather than from a fixed start point.
+ * The engine follows a latest-state-wins model:
+ * - the backend state is the source of truth
+ * - the newest revision always wins
+ * - stale async work is ignored
+ * - ambiences and music are reconciled independently
+ * - volume changes retarget in-flight fades instead of fighting them
  */
 class AudioEngine {
   /**
@@ -12,24 +16,25 @@ class AudioEngine {
     this.audioContext = null;
     this.masterGain = null;
 
-    this.musicController = null;
-    this.musicPlaylistId = null;
+    this.lastRevision = -1;
+    this.syncToken = 0;
+    this.isInitialized = false;
 
+    this.musicController = null;
     this.ambienceControllers = new Map();
 
     this.defaultMusicFadeSeconds = 5.0;
     this.defaultAmbienceFadeSeconds = 10.0;
-    this.volumeFadeSeconds = 0.35;
   }
 
   /**
-   * Ensure the audio context is created and ready.
+   * Initialize the Web Audio context and master gain node.
    *
    * Returns:
    *   A promise that resolves once the audio engine is ready.
    */
   async init() {
-    if (this.audioContext) {
+    if (this.isInitialized) {
       return;
     }
 
@@ -39,13 +44,15 @@ class AudioEngine {
     this.masterGain = this.audioContext.createGain();
     this.masterGain.gain.value = 1.0;
     this.masterGain.connect(this.audioContext.destination);
+
+    this.isInitialized = true;
   }
 
   /**
-   * Resume the audio context if it is currently suspended.
+   * Ensure the audio context is running.
    *
    * Returns:
-   *   A promise that resolves once the context is running.
+   *   A promise that resolves once the audio context is active.
    */
   async ensureRunning() {
     await this.init();
@@ -56,180 +63,200 @@ class AudioEngine {
   }
 
   /**
-   * Apply the complete scene audio state.
+   * Synchronize all audio playback against the latest application state.
    *
    * Args:
-   *   state: The current application state.
-   *   resolvedAudio: The resolved audio lookup data.
+   *   state: The current application state snapshot.
+   *   resolvedAudio: The resolved audio library lookup data.
+   *
+   * Returns:
+   *   A promise that resolves once reconciliation completes.
    */
   async syncFromState(state, resolvedAudio) {
-    await this.ensureRunning();
+    const revision = Number(state?.revision ?? 0);
 
-    const fadeSettings = state.fade_settings ?? {};
-    const musicFadeSeconds = Number(fadeSettings.music ?? this.defaultMusicFadeSeconds);
-    const ambienceFadeSeconds = Number(fadeSettings.ambience ?? this.defaultAmbienceFadeSeconds);
-
-    const currentMusicPlaylist = state.current_music_playlist;
-    const activeAmbiences = state.active_ambiences ?? {};
-
-    if (currentMusicPlaylist && resolvedAudio.musicPlaylist) {
-      await this.setMusic(
-        currentMusicPlaylist.playlist_id,
-        resolvedAudio.musicPlaylist,
-        currentMusicPlaylist.volume ?? 1.0,
-        musicFadeSeconds
-      );
-    } else {
-      await this.clearMusic(musicFadeSeconds);
-    }
-
-    await this.syncAmbiences(activeAmbiences, resolvedAudio.ambienceTrackUrls, ambienceFadeSeconds);
-  }
-
-  /**
-   * Set or switch music playlist playback.
-   *
-   * Args:
-   *   playlistId: The selected playlist identifier.
-   *   playlist: The resolved playlist object.
-   *   volume: The target volume.
-   *   fadeSeconds: The fade duration in seconds.
-   */
-  async setMusic(playlistId, playlist, volume, fadeSeconds = this.defaultMusicFadeSeconds) {
-    await this.ensureRunning();
-
-    if (!playlistId || !playlist || !playlist.tracks || playlist.tracks.length === 0) {
-      await this.clearMusic(fadeSeconds);
+    if (revision <= this.lastRevision) {
       return;
     }
 
-    if (!this.musicController) {
-      this.musicController = new PlaylistController(this.audioContext, this.masterGain, {
-        kind: "music",
-      });
-      this.musicPlaylistId = null;
-    }
+    this.lastRevision = revision;
+    const token = this.nextSyncToken();
 
-    if (this.musicPlaylistId !== playlistId) {
-      console.log("[audio] switching playlist:", playlistId, playlist.tracks.map((track) => track.url));
-      this.musicPlaylistId = playlistId;
-      await this.musicController.switchPlaylist(playlist.tracks, volume ?? 1.0, fadeSeconds);
-      return;
-    }
+    await this.ensureRunning();
 
-    await this.musicController.setVolume(volume ?? 1.0, this.volumeFadeSeconds);
+    const fadeSettings = state?.fade_settings ?? {};
+    const musicFadeSeconds = this.getFadeSeconds(fadeSettings.music, this.defaultMusicFadeSeconds);
+    const ambienceFadeSeconds = this.getFadeSeconds(fadeSettings.ambience, this.defaultAmbienceFadeSeconds);
+
+    await this.syncMusicFromState(state?.current_music_playlist ?? null, resolvedAudio?.musicPlaylist ?? null, musicFadeSeconds, token);
+    await this.syncAmbiencesFromState(state?.active_ambiences ?? {}, resolvedAudio?.ambienceTrackUrls ?? {}, ambienceFadeSeconds, token);
   }
 
   /**
-   * Synchronize ambience controllers with the current active ambience map.
+   * Get the next sync token.
+   *
+   * Returns:
+   *   A monotonically increasing token number.
+   */
+  nextSyncToken() {
+    this.syncToken += 1;
+    return this.syncToken;
+  }
+
+  /**
+   * Check whether a token is still current.
    *
    * Args:
-   *   activeAmbiences: The active ambience state map.
-   *   resolvedTrackUrls: A map of ambience ids to track URLs.
-   *   fadeSeconds: The fade duration in seconds.
+   *   token: The token to validate.
+   *
+   * Returns:
+   *   True if the token is current, false otherwise.
    */
-  async syncAmbiences(activeAmbiences, resolvedTrackUrls, fadeSeconds = this.defaultAmbienceFadeSeconds) {
-    await this.ensureRunning();
+  isCurrentToken(token) {
+    return token === this.syncToken;
+  }
+
+  /**
+   * Convert an input value into a safe fade duration.
+   *
+   * Args:
+   *   value: The input fade value.
+   *   fallback: The fallback duration.
+   *
+   * Returns:
+   *   A safe number of seconds.
+   */
+  getFadeSeconds(value, fallback) {
+    const seconds = Number(value ?? fallback);
+    return Number.isFinite(seconds) && seconds >= 0 ? seconds : fallback;
+  }
+
+  /**
+   * Reconcile music against the current desired state.
+   *
+   * Args:
+   *   currentMusicPlaylist: The current music playlist state.
+   *   resolvedPlaylist: The resolved playlist library entry.
+   *   fadeSeconds: Fade duration in seconds.
+   *   token: The current sync token.
+   */
+  async syncMusicFromState(currentMusicPlaylist, resolvedPlaylist, fadeSeconds, token) {
+    if (!this.isCurrentToken(token)) {
+      return;
+    }
+
+    if (!currentMusicPlaylist || !resolvedPlaylist || !Array.isArray(resolvedPlaylist.tracks) || resolvedPlaylist.tracks.length === 0) {
+      await this.clearMusic(fadeSeconds, token);
+      return;
+    }
+
+    const playlistId = currentMusicPlaylist.playlist_id;
+    const targetVolume = Number(currentMusicPlaylist.volume ?? 1.0);
+
+    const controller = this.getOrCreateMusicController();
+
+    if (controller.playlistId !== playlistId) {
+      await controller.switchPlaylist(playlistId, resolvedPlaylist.tracks, targetVolume, fadeSeconds, token);
+      return;
+    }
+
+    await controller.reconcileVolume(targetVolume, fadeSeconds, token);
+  }
+
+  /**
+   * Reconcile ambiences against the current desired state.
+   *
+   * Args:
+   *   activeAmbiences: The desired active ambience state map.
+   *   resolvedTrackUrls: A map of ambience ids to resolved audio urls.
+   *   fadeSeconds: Fade duration in seconds.
+   *   token: The current sync token.
+   */
+  async syncAmbiencesFromState(activeAmbiences, resolvedTrackUrls, fadeSeconds, token) {
+    if (!this.isCurrentToken(token)) {
+      return;
+    }
 
     const desiredIds = new Set(Object.keys(activeAmbiences ?? {}));
 
-    for (const [ambienceId, ambience] of Object.entries(activeAmbiences ?? {})) {
+    for (const [ambienceId, ambienceState] of Object.entries(activeAmbiences ?? {})) {
+      if (!this.isCurrentToken(token)) {
+        return;
+      }
+
       const trackUrl = resolvedTrackUrls?.[ambienceId];
       if (!trackUrl) {
         continue;
       }
 
       const controller = this.getOrCreateAmbienceController(ambienceId);
-
-      if (controller.sourceUrl !== trackUrl) {
-        await controller.setSource(trackUrl);
-      }
-
-      await controller.fadeTo(ambience.volume ?? 1.0, fadeSeconds);
+      await controller.reconcile(trackUrl, Number(ambienceState.volume ?? 1.0), fadeSeconds, token);
     }
 
     for (const [ambienceId, controller] of this.ambienceControllers.entries()) {
       if (!desiredIds.has(ambienceId)) {
-        await controller.fadeOutAndStop(fadeSeconds);
+        await controller.stopGracefully(fadeSeconds, token);
         this.ambienceControllers.delete(ambienceId);
       }
     }
   }
 
   /**
-   * Set the volume for a single ambience track.
+   * Create or return the shared music controller.
    *
-   * Args:
-   *   ambienceId: The ambience identifier.
-   *   volume: The new volume.
+   * Returns:
+   *   A playlist controller.
    */
-  async setAmbienceVolume(ambienceId, volume) {
-    await this.ensureRunning();
-
-    const controller = this.ambienceControllers.get(ambienceId);
-    if (!controller) {
-      return;
-    }
-
-    await controller.fadeTo(volume, this.volumeFadeSeconds);
-  }
-
-  /**
-   * Clear the current music track.
-   *
-   * Args:
-   *   fadeSeconds: The fade duration in seconds.
-   */
-  async clearMusic(fadeSeconds = this.defaultMusicFadeSeconds) {
+  getOrCreateMusicController() {
     if (!this.musicController) {
-      this.musicPlaylistId = null;
-      return;
+      this.musicController = new PlaylistController(this.audioContext, this.masterGain, "music");
     }
 
-    await this.musicController.stopPlaylist(fadeSeconds);
-    this.musicController = null;
-    this.musicPlaylistId = null;
+    return this.musicController;
   }
 
   /**
-   * Clear all ambience tracks.
-   *
-   * Args:
-   *   fadeSeconds: The fade duration in seconds.
-   */
-  async clearAmbiences(fadeSeconds = this.defaultAmbienceFadeSeconds) {
-    for (const [ambienceId, controller] of this.ambienceControllers.entries()) {
-      await controller.fadeOutAndStop(fadeSeconds);
-      this.ambienceControllers.delete(ambienceId);
-    }
-  }
-
-  /**
-   * Get or create an ambience controller.
+   * Create or return an ambience controller.
    *
    * Args:
    *   ambienceId: The ambience identifier.
    *
    * Returns:
-   *   An ambience controller instance.
+   *   A track controller.
    */
   getOrCreateAmbienceController(ambienceId) {
     let controller = this.ambienceControllers.get(ambienceId);
 
     if (!controller) {
-      controller = new FadableTrackController(this.audioContext, this.masterGain, {
-        loop: true,
+      controller = new ReconciledTrackController(this.audioContext, this.masterGain, {
         kind: "ambience",
+        loop: true,
       });
       this.ambienceControllers.set(ambienceId, controller);
     }
 
     return controller;
   }
+
+  /**
+   * Clear the active music playlist.
+   *
+   * Args:
+   *   fadeSeconds: Fade duration in seconds.
+   *   token: The current sync token.
+   */
+  async clearMusic(fadeSeconds, token) {
+    if (!this.musicController) {
+      return;
+    }
+
+    await this.musicController.stop(fadeSeconds, token);
+    this.musicController = null;
+  }
 }
 
 /**
- * Play a shuffled playlist with auto-advance.
+ * Manage one playlist with sequential track playback and auto-advance.
  */
 class PlaylistController {
   /**
@@ -237,173 +264,196 @@ class PlaylistController {
    *
    * Args:
    *   audioContext: The shared audio context.
-   *   outputNode: The node to connect into.
-   *   options: Playlist options.
+   *   outputNode: The output node.
+   *   kind: Controller label used for logs.
    */
-  constructor(audioContext, outputNode, options = {}) {
+  constructor(audioContext, outputNode, kind = "music") {
     this.audioContext = audioContext;
     this.outputNode = outputNode;
-    this.kind = options.kind ?? "playlist";
+    this.kind = kind;
 
-    this.trackController = new FadableTrackController(this.audioContext, this.outputNode, {
+    this.trackController = new ReconciledTrackController(this.audioContext, this.outputNode, {
+      kind,
       loop: false,
-      kind: this.kind,
     });
 
+    this.playlistId = null;
     this.tracks = [];
-    this.queue = [];
     this.currentTrackIndex = -1;
     this.currentVolume = 1.0;
+    this.playToken = 0;
     this.isStopping = false;
-    this.token = 0;
   }
 
   /**
-   * Switch to a new playlist and crossfade from the current track.
+   * Switch to a new playlist.
    *
    * Args:
-   *   tracks: The playlist track list.
-   *   targetVolume: The target volume.
-   *   fadeSeconds: The playlist switch fade duration.
+   *   playlistId: Playlist identifier.
+   *   tracks: Track list for the playlist.
+   *   targetVolume: Desired playback volume.
+   *   fadeSeconds: Fade duration in seconds.
+   *   syncToken: The current audio sync token.
    */
-  async switchPlaylist(tracks, targetVolume, fadeSeconds) {
-    this.token += 1;
-    const switchToken = this.token;
+  async switchPlaylist(playlistId, tracks, targetVolume, fadeSeconds, syncToken) {
+    this.playToken += 1;
+    const token = this.playToken;
 
+    this.playlistId = playlistId;
     this.tracks = Array.isArray(tracks) ? tracks.slice() : [];
-    this.queue = this.shuffleTracks(this.tracks);
     this.currentTrackIndex = 0;
-    this.currentVolume = Number(targetVolume ?? 1.0);
+    this.currentVolume = this.clampVolume(targetVolume);
 
-    if (this.queue.length === 0) {
-      await this.stopPlaylist(fadeSeconds);
+    if (this.tracks.length === 0) {
+      await this.stop(fadeSeconds, syncToken);
       return;
     }
 
-    const nextTrack = this.queue[this.currentTrackIndex];
-    console.log("[audio] starting playlist with track:", nextTrack.url);
+    await this.trackController.fadeOutAndPause(fadeSeconds, token, syncToken);
 
-    await this.trackController.fadeTo(0.0, fadeSeconds);
-    if (switchToken !== this.token) {
+    if (!this.isCurrentPlayToken(token, syncToken)) {
       return;
     }
 
-    await this.trackController.setSource(nextTrack.url);
-    if (switchToken !== this.token) {
+    await this.trackController.setSource(this.tracks[this.currentTrackIndex].url, false, token, syncToken);
+
+    if (!this.isCurrentPlayToken(token, syncToken)) {
       return;
     }
 
-    this.bindTrackEnd(switchToken);
-
-    await this.trackController.fadeTo(this.currentVolume, fadeSeconds);
+    this.bindTrackEnd(token, syncToken);
+    await this.trackController.fadeTo(this.currentVolume, fadeSeconds, token, syncToken);
   }
 
   /**
-   * Update playlist volume without changing the current track.
+   * Reconcile volume without changing the current track.
    *
    * Args:
-   *   volume: The new target volume.
-   *   fadeSeconds: The fade duration in seconds.
+   *   targetVolume: Desired volume.
+   *   fadeSeconds: Fade duration in seconds.
+   *   syncToken: Current audio sync token.
    */
-  async setVolume(volume, fadeSeconds) {
-    this.currentVolume = Number(volume ?? 1.0);
-    await this.trackController.fadeTo(this.currentVolume, fadeSeconds);
+  async reconcileVolume(targetVolume, fadeSeconds, syncToken) {
+    const safeVolume = this.clampVolume(targetVolume);
+    this.currentVolume = safeVolume;
+
+    await this.trackController.reconcileVolume(safeVolume, fadeSeconds, this.playToken, syncToken);
   }
 
   /**
-   * Advance to the next track in the current shuffled order.
-   *
-   * When the end of the queue is reached, reshuffle and start from the beginning.
-   */
-  async playNextTrack() {
-    if (this.isStopping || this.queue.length === 0) {
-      return;
-    }
-
-    this.currentTrackIndex += 1;
-
-    if (this.currentTrackIndex >= this.queue.length) {
-      this.queue = this.shuffleTracks(this.tracks);
-      this.currentTrackIndex = 0;
-    }
-
-    const nextTrack = this.queue[this.currentTrackIndex];
-    console.log("[audio] advancing to next track:", nextTrack.url);
-
-    await this.trackController.setSource(nextTrack.url);
-    await this.trackController.fadeTo(this.currentVolume, 0.15);
-    this.bindTrackEnd(this.token);
-  }
-
-  /**
-   * Stop the playlist and fade out the current track.
+   * Stop playlist playback gracefully.
    *
    * Args:
-   *   fadeSeconds: The fade duration in seconds.
+   *   fadeSeconds: Fade duration in seconds.
+   *   syncToken: Current audio sync token.
    */
-  async stopPlaylist(fadeSeconds) {
+  async stop(fadeSeconds, syncToken) {
     this.isStopping = true;
-    this.token += 1;
+    this.playToken += 1;
 
-    await this.trackController.fadeOutAndStop(fadeSeconds);
-    this.isStopping = false;
-    this.queue = [];
+    await this.trackController.fadeOutAndPause(fadeSeconds, this.playToken, syncToken);
+
+    this.playlistId = null;
     this.tracks = [];
     this.currentTrackIndex = -1;
+    this.isStopping = false;
   }
 
   /**
-   * Bind the end handler for the currently playing track.
+   * Handle automatic advancement after a track ends.
    *
    * Args:
-   *   tokenAtBind: The controller token at bind time.
+   *   playTokenAtBind: Token captured when the handler was attached.
+   *   syncToken: Current audio sync token.
    */
-  bindTrackEnd(tokenAtBind) {
+  bindTrackEnd(playTokenAtBind, syncToken) {
     if (!this.trackController.audioElement) {
       return;
     }
 
     this.trackController.audioElement.onended = async () => {
-      if (this.isStopping || tokenAtBind !== this.token) {
+      if (!this.isCurrentPlayToken(playTokenAtBind, syncToken) || this.isStopping) {
         return;
       }
 
-      await this.playNextTrack();
+      await this.playNextTrack(playTokenAtBind, syncToken);
     };
   }
 
   /**
-   * Shuffle a track list.
+   * Advance to the next track in order.
+   *
+   * The order is kept as provided by the current playlist data.
    *
    * Args:
-   *   tracks: The original track list.
-   *
-   * Returns:
-   *   A shuffled copy of the list.
+   *   playTokenAtBind: Current playlist token.
+   *   syncToken: Current audio sync token.
    */
-  shuffleTracks(tracks) {
-    const shuffled = tracks.slice();
-
-    for (let i = shuffled.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  async playNextTrack(playTokenAtBind, syncToken) {
+    if (!this.isCurrentPlayToken(playTokenAtBind, syncToken) || this.tracks.length === 0) {
+      return;
     }
 
-    return shuffled;
+    this.currentTrackIndex += 1;
+    if (this.currentTrackIndex >= this.tracks.length) {
+      this.currentTrackIndex = 0;
+    }
+
+    const nextTrack = this.tracks[this.currentTrackIndex];
+    await this.trackController.setSource(nextTrack.url, false, playTokenAtBind, syncToken);
+
+    if (!this.isCurrentPlayToken(playTokenAtBind, syncToken)) {
+      return;
+    }
+
+    this.bindTrackEnd(playTokenAtBind, syncToken);
+    await this.trackController.fadeTo(this.currentVolume, 0.15, playTokenAtBind, syncToken);
+  }
+
+  /**
+   * Validate that the provided token is still active.
+   *
+   * Args:
+   *   playToken: Playlist token.
+   *   syncToken: Global sync token.
+   *
+   * Returns:
+   *   True if the token is still valid.
+   */
+  isCurrentPlayToken(playToken, syncToken) {
+    return playToken === this.playToken && syncToken === this.trackController.syncToken;
+  }
+
+  /**
+   * Clamp a volume value into the valid range.
+   *
+   * Args:
+   *   volume: Desired volume.
+   *
+   * Returns:
+   *   A value between 0 and 1.
+   */
+  clampVolume(volume) {
+    const numeric = Number(volume ?? 1.0);
+    if (!Number.isFinite(numeric)) {
+      return 1.0;
+    }
+
+    return Math.min(1.0, Math.max(0.0, numeric));
   }
 }
 
 /**
- * Manage one audio track with a gain node and interruption-safe fades.
+ * Manage one audio track with reconciliation-aware source and volume changes.
  */
-class FadableTrackController {
+class ReconciledTrackController {
   /**
    * Create a new track controller.
    *
    * Args:
    *   audioContext: The shared audio context.
-   *   outputNode: The node to connect into.
-   *   options: Track options.
+   *   outputNode: The destination node.
+   *   options: Controller options.
    */
   constructor(audioContext, outputNode, options = {}) {
     this.audioContext = audioContext;
@@ -420,20 +470,44 @@ class FadableTrackController {
     this.gainNode.connect(this.outputNode);
 
     this.currentFadeTarget = 0.0;
+    this.syncToken = 0;
   }
 
   /**
-   * Create or replace the underlying audio element source.
+   * Reconcile the controller to a desired source and volume.
    *
    * Args:
-   *   url: The audio source URL.
+   *   url: Desired source url.
+   *   targetVolume: Desired volume.
+   *   fadeSeconds: Fade duration.
+   *   playToken: Optional playlist token.
+   *   syncToken: Global sync token.
    */
-  async setSource(url) {
-    if (this.sourceUrl === url && this.audioElement && this.sourceNode) {
-      return;
+  async reconcile(url, targetVolume, fadeSeconds, playToken, syncToken) {
+    if (this.sourceUrl !== url) {
+      await this.setSource(url, true, playToken, syncToken);
     }
 
-    await this.stopSource();
+    await this.fadeTo(targetVolume, fadeSeconds, playToken, syncToken);
+  }
+
+  /**
+   * Set or replace the current audio source.
+   *
+   * Args:
+   *   url: Source URL.
+   *   shouldFadeIn: Whether the source should fade in afterwards.
+   *   playToken: Optional playlist token.
+   *   syncToken: Global sync token.
+   */
+  async setSource(url, shouldFadeIn, playToken, syncToken) {
+    const token = this.nextToken();
+
+    await this.stopSource(token, syncToken);
+
+    if (!this.isCurrentToken(token, syncToken)) {
+      return;
+    }
 
     this.sourceUrl = url;
     this.audioElement = new Audio(url);
@@ -443,6 +517,10 @@ class FadableTrackController {
 
     await this.waitForCanPlay(this.audioElement);
 
+    if (!this.isCurrentToken(token, syncToken)) {
+      return;
+    }
+
     this.sourceNode = this.audioContext.createMediaElementSource(this.audioElement);
     this.sourceNode.connect(this.gainNode);
 
@@ -451,20 +529,30 @@ class FadableTrackController {
     } catch (error) {
       console.warn(`Unable to autoplay ${this.kind} track:`, error);
     }
+
+    if (shouldFadeIn) {
+      await this.fadeTo(1.0, 0.15, playToken, syncToken);
+    }
   }
 
   /**
    * Fade the track to a target volume.
    *
    * Args:
-   *   targetVolume: The target gain value.
-   *   fadeSeconds: The fade duration in seconds.
+   *   targetVolume: Desired target.
+   *   fadeSeconds: Fade duration.
+   *   playToken: Optional playlist token.
+   *   syncToken: Global sync token.
    */
-  async fadeTo(targetVolume, fadeSeconds) {
-    const safeTarget = Math.max(0, Number(targetVolume ?? 0));
-    const safeDurationMs = Math.max(0, Number(fadeSeconds ?? 0) * 1000);
+  async fadeTo(targetVolume, fadeSeconds, playToken, syncToken) {
+    const safeTarget = this.clampVolume(targetVolume);
+    const currentToken = this.nextToken();
 
-    if (!this.gainNode) {
+    if (!this.isCurrentToken(currentToken, syncToken)) {
+      return;
+    }
+
+    if (this.currentFadeTarget === safeTarget) {
       return;
     }
 
@@ -473,30 +561,90 @@ class FadableTrackController {
 
     this.gainNode.gain.cancelScheduledValues(now);
     this.gainNode.gain.setValueAtTime(currentGain, now);
-    this.gainNode.gain.linearRampToValueAtTime(safeTarget, now + safeDurationMs / 1000);
+    this.gainNode.gain.linearRampToValueAtTime(safeTarget, now + Math.max(0, Number(fadeSeconds ?? 0)));
 
     this.currentFadeTarget = safeTarget;
 
-    if (safeDurationMs > 0) {
-      await this.wait(safeDurationMs);
+    if (Number(fadeSeconds ?? 0) > 0) {
+      await this.wait(Number(fadeSeconds ?? 0) * 1000);
+    }
+
+    if (!this.isCurrentToken(currentToken, syncToken)) {
+      return;
     }
   }
 
   /**
-   * Fade the track out and stop playback.
+   * Fade out and pause the current audio source.
    *
    * Args:
-   *   fadeSeconds: The fade duration in seconds.
+   *   fadeSeconds: Fade duration.
+   *   playToken: Optional playlist token.
+   *   syncToken: Global sync token.
    */
-  async fadeOutAndStop(fadeSeconds) {
-    await this.fadeTo(0.0, fadeSeconds);
-    await this.stopSource();
+  async fadeOutAndPause(fadeSeconds, playToken, syncToken) {
+    await this.fadeTo(0.0, fadeSeconds, playToken, syncToken);
+    await this.pauseSource(syncToken);
+  }
+
+  /**
+   * Fade out and stop the current audio source.
+   *
+   * Args:
+   *   fadeSeconds: Fade duration.
+   *   playToken: Optional playlist token.
+   *   syncToken: Global sync token.
+   */
+  async fadeOutAndStop(fadeSeconds, playToken, syncToken) {
+    await this.fadeOutAndPause(fadeSeconds, playToken, syncToken);
+    await this.stopSource(this.syncToken, syncToken);
+  }
+
+  /**
+   * Reconcile a volume change without changing the source.
+   *
+   * Args:
+   *   targetVolume: Desired volume.
+   *   fadeSeconds: Fade duration.
+   *   playToken: Optional playlist token.
+   *   syncToken: Global sync token.
+   */
+  async reconcileVolume(targetVolume, fadeSeconds, playToken, syncToken) {
+    await this.fadeTo(targetVolume, fadeSeconds, playToken, syncToken);
+  }
+
+  /**
+   * Pause the current audio element.
+   *
+   * Args:
+   *   syncToken: Global sync token.
+   */
+  async pauseSource(syncToken) {
+    if (!this.isCurrentToken(this.syncToken, syncToken)) {
+      return;
+    }
+
+    if (this.audioElement) {
+      try {
+        this.audioElement.pause();
+      } catch (error) {
+        console.warn(`Unable to pause ${this.kind} track:`, error);
+      }
+    }
   }
 
   /**
    * Stop and release the current source.
+   *
+   * Args:
+   *   token: Local source token.
+   *   syncToken: Global sync token.
    */
-  async stopSource() {
+  async stopSource(token, syncToken) {
+    if (!this.isCurrentToken(token, syncToken)) {
+      return;
+    }
+
     if (this.audioElement) {
       try {
         this.audioElement.pause();
@@ -511,13 +659,38 @@ class FadableTrackController {
       } catch (error) {
         console.warn(`Unable to disconnect ${this.kind} source node:`, error);
       }
-      this.sourceNode = null;
     }
 
     this.audioElement = null;
+    this.sourceNode = null;
     this.sourceUrl = null;
     this.currentFadeTarget = 0.0;
     this.gainNode.gain.value = 0.0;
+  }
+
+  /**
+   * Increment the controller token.
+   *
+   * Returns:
+   *   The new token value.
+   */
+  nextToken() {
+    this.syncToken += 1;
+    return this.syncToken;
+  }
+
+  /**
+   * Check whether a token is still current.
+   *
+   * Args:
+   *   token: Local token.
+   *   syncToken: Global sync token.
+   *
+   * Returns:
+   *   True if the token is current.
+   */
+  isCurrentToken(token, syncToken) {
+    return token === this.syncToken && syncToken === this.syncToken;
   }
 
   /**
@@ -531,13 +704,31 @@ class FadableTrackController {
   }
 
   /**
-   * Wait for the audio element to become playable.
+   * Clamp a volume value into the valid range.
+   *
+   * Args:
+   *   volume: Desired volume.
+   *
+   * Returns:
+   *   A safe normalized volume.
+   */
+  clampVolume(volume) {
+    const numeric = Number(volume ?? 0.0);
+    if (!Number.isFinite(numeric)) {
+      return 0.0;
+    }
+
+    return Math.min(1.0, Math.max(0.0, numeric));
+  }
+
+  /**
+   * Wait for an audio element to become playable.
    *
    * Args:
    *   audioElement: The audio element.
    *
    * Returns:
-   *   A promise that resolves when the source can play.
+   *   A promise that resolves when the track can play.
    */
   waitForCanPlay(audioElement) {
     return new Promise((resolve, reject) => {

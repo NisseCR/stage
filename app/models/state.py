@@ -25,3 +25,4 @@ class AppState(BaseModel):
             "scene": 5.0,
         }
     )
+    revision: int = 0

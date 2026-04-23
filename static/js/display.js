@@ -1,8 +1,8 @@
 /**
- * Initialize the display page behavior.
+ * Initialize the display page.
  *
- * This page is a read-only listener that receives live updates from the backend
- * via SSE and renders the active scene and audio state.
+ * This page receives full state snapshots from the backend and uses them as the
+ * source of truth for both visuals and audio reconciliation.
  */
 async function initDisplayPage() {
   const eventSource = new EventSource("/events");
@@ -22,41 +22,88 @@ async function initDisplayPage() {
   const sceneFadeOverlay = document.getElementById("scene-fade-overlay");
   const audioUnlockOverlay = document.getElementById("audio-unlock-overlay");
 
-  const sceneMap = new Map(
-    library.scenes.map((scene) => [scene.id, scene])
-  );
-
-  const musicPlaylistMap = new Map(
-    library.music_playlists.map((playlist) => [playlist.id, playlist])
-  );
-
-  const ambienceTrackMap = new Map();
-  library.ambience_folders.forEach((folder) => {
-    folder.tracks.forEach((track) => {
-      ambienceTrackMap.set(track.name, track.url);
-    });
-  });
+  const sceneMap = buildSceneMap(library);
+  const musicPlaylistMap = buildMusicPlaylistMap(library);
+  const ambienceTrackMap = buildAmbienceTrackMap(library);
 
   const audioEngine = new window.AudioEngine();
 
   let audioReady = false;
+  let isSyncingAudio = false;
   let pendingAudioState = null;
 
-  let currentState = {
-    current_scene: null,
-    current_music_playlist: null,
-    active_ambiences: {},
-    fade_settings: {},
-  };
-
+  let currentState = createEmptyState();
   let currentSceneId = null;
   let isTransitioning = false;
+
+  /**
+   * Create an empty display state.
+   *
+   * Returns:
+   *   A minimal state object.
+   */
+  function createEmptyState() {
+    return {
+      current_scene: null,
+      current_music_playlist: null,
+      active_ambiences: {},
+      fade_settings: {},
+      revision: -1,
+    };
+  }
+
+  /**
+   * Build a map of scene id to scene definition.
+   *
+   * Args:
+   *   library: The loaded media library.
+   *
+   * Returns:
+   *   A map of scene id to scene data.
+   */
+  function buildSceneMap(libraryData) {
+    return new Map((libraryData.scenes ?? []).map((scene) => [scene.id, scene]));
+  }
+
+  /**
+   * Build a map of playlist id to playlist definition.
+   *
+   * Args:
+   *   library: The loaded media library.
+   *
+   * Returns:
+   *   A map of playlist id to playlist data.
+   */
+  function buildMusicPlaylistMap(libraryData) {
+    return new Map((libraryData.music_playlists ?? []).map((playlist) => [playlist.id, playlist]));
+  }
+
+  /**
+   * Build a map of ambience id to track url.
+   *
+   * Args:
+   *   library: The loaded media library.
+   *
+   * Returns:
+   *   A map of ambience identifier to track url.
+   */
+  function buildAmbienceTrackMap(libraryData) {
+    const trackMap = new Map();
+
+    (libraryData.ambience_folders ?? []).forEach((folder) => {
+      (folder.tracks ?? []).forEach((track) => {
+        trackMap.set(track.name, track.url);
+      });
+    });
+
+    return trackMap;
+  }
 
   /**
    * Render the current application state into the display UI.
    *
    * Args:
-   *   state: The latest known application state.
+   *   state: The latest state snapshot.
    */
   function renderState(state) {
     if (displayScene) {
@@ -73,24 +120,10 @@ async function initDisplayPage() {
   }
 
   /**
-   * Merge a partial state update into the current state and re-render.
-   *
-   * Args:
-   *   patch: The partial update received from SSE.
-   */
-  function applyStatePatch(patch) {
-    currentState = {
-      ...currentState,
-      ...patch,
-    };
-    renderState(currentState);
-  }
-
-  /**
-   * Get the current fade duration for scene transitions in milliseconds.
+   * Get the fade duration in milliseconds for scene transitions.
    *
    * Returns:
-   *   The fade duration in milliseconds.
+   *   The scene fade duration.
    */
   function getSceneFadeDurationMs() {
     const fadeSeconds = Number(currentState.fade_settings?.scene ?? 5.0);
@@ -98,10 +131,10 @@ async function initDisplayPage() {
   }
 
   /**
-   * Fade the entire scene stage to black.
+   * Fade the scene to black.
    *
    * Returns:
-   *   A promise that resolves after the fade completes.
+   *   A promise that resolves when the fade completes.
    */
   function fadeToBlack() {
     return new Promise((resolve) => {
@@ -118,10 +151,10 @@ async function initDisplayPage() {
   }
 
   /**
-   * Fade the entire scene stage back in from black.
+   * Fade the scene back in from black.
    *
    * Returns:
-   *   A promise that resolves after the fade completes.
+   *   A promise that resolves when the fade completes.
    */
   function fadeInFromBlack() {
     return new Promise((resolve) => {
@@ -138,7 +171,7 @@ async function initDisplayPage() {
   }
 
   /**
-   * Clear the current scene stage contents.
+   * Clear the rendered scene contents.
    */
   function clearSceneStage() {
     if (sceneBackground) {
@@ -153,11 +186,11 @@ async function initDisplayPage() {
   }
 
   /**
-   * Apply visual styling from a layer configuration.
+   * Apply layer styles to an element.
    *
    * Args:
-   *   element: The DOM element representing a layer.
-   *   layer: The layer configuration.
+   *   element: The DOM element.
+   *   layer: The layer definition.
    */
   function applyLayerStyles(element, layer) {
     element.style.opacity = String(layer.opacity ?? 1.0);
@@ -167,13 +200,27 @@ async function initDisplayPage() {
   }
 
   /**
-   * Wait for an image element to finish loading.
+   * Determine whether a layer should be rendered as a video.
+   *
+   * Args:
+   *   layer: The layer definition.
+   *
+   * Returns:
+   *   True if the layer should use a video element.
+   */
+  function isVideoLayer(layer) {
+    const fileSrc = String(layer?.src ?? "").toLowerCase();
+    return layer?.type === "video" || fileSrc.endsWith(".webm") || fileSrc.endsWith(".mp4");
+  }
+
+  /**
+   * Wait for an image to finish loading.
    *
    * Args:
    *   image: The image element.
    *
    * Returns:
-   *   A promise that resolves when the image is loaded.
+   *   A promise that resolves when loading succeeds.
    */
   function waitForImageLoad(image) {
     return new Promise((resolve, reject) => {
@@ -183,13 +230,13 @@ async function initDisplayPage() {
   }
 
   /**
-   * Wait for a video element to be ready to play.
+   * Wait for a video to be ready.
    *
    * Args:
    *   video: The video element.
    *
    * Returns:
-   *   A promise that resolves when the video is ready.
+   *   A promise that resolves when the video can play.
    */
   function waitForVideoReady(video) {
     return new Promise((resolve, reject) => {
@@ -199,13 +246,10 @@ async function initDisplayPage() {
   }
 
   /**
-   * Preload the assets for a scene without showing them yet.
+   * Preload a scene before rendering it.
    *
    * Args:
-   *   scene: The scene definition from the library, or null.
-   *
-   * Returns:
-   *   A promise that resolves once all assets are ready.
+   *   scene: Scene definition or null.
    */
   async function preloadScene(scene) {
     if (!scene) {
@@ -220,30 +264,27 @@ async function initDisplayPage() {
       preloadTasks.push(waitForImageLoad(image));
     }
 
-    scene.layers.forEach((layer) => {
-      const isVideo = layer.type === "video" || layer.src.endsWith(".webm") || layer.src.endsWith(".mp4");
-
-      if (isVideo) {
+    (scene.layers ?? []).forEach((layer) => {
+      if (isVideoLayer(layer)) {
         const video = document.createElement("video");
         video.preload = "auto";
         video.src = layer.src;
         preloadTasks.push(waitForVideoReady(video));
-        return;
+      } else {
+        const image = new Image();
+        image.src = layer.src;
+        preloadTasks.push(waitForImageLoad(image));
       }
-
-      const image = new Image();
-      image.src = layer.src;
-      preloadTasks.push(waitForImageLoad(image));
     });
 
     await Promise.all(preloadTasks);
   }
 
   /**
-   * Render a scene definition into the stage.
+   * Render a scene into the display stage.
    *
    * Args:
-   *   scene: The scene definition from the library, or null.
+   *   scene: Scene definition or null.
    */
   function renderScene(scene) {
     clearSceneStage();
@@ -259,10 +300,8 @@ async function initDisplayPage() {
     }
 
     if (sceneLayers) {
-      scene.layers.forEach((layer) => {
-        const isVideo = layer.type === "video" || layer.src.endsWith(".webm") || layer.src.endsWith(".mp4");
-
-        if (isVideo) {
+      (scene.layers ?? []).forEach((layer) => {
+        if (isVideoLayer(layer)) {
           const video = document.createElement("video");
           video.className = "scene-layer-video";
           video.src = layer.src;
@@ -287,10 +326,10 @@ async function initDisplayPage() {
   }
 
   /**
-   * Switch to a new scene with a fade-to-black transition.
+   * Switch to a new scene using a fade transition.
    *
    * Args:
-   *   sceneId: The new active scene identifier.
+   *   sceneId: The new scene identifier.
    */
   async function switchScene(sceneId) {
     if (isTransitioning) {
@@ -317,13 +356,13 @@ async function initDisplayPage() {
   }
 
   /**
-   * Resolve the current audio state from the display state.
+   * Resolve the audio library state for the current display state.
    *
    * Args:
-   *   state: The latest known application state.
+   *   state: The current application state.
    *
    * Returns:
-   *   A resolved audio lookup object.
+   *   Resolved audio references.
    */
   function resolveAudioState(state) {
     const musicPlaylistId = state.current_music_playlist?.playlist_id ?? null;
@@ -344,10 +383,13 @@ async function initDisplayPage() {
   }
 
   /**
-   * Apply audio state from the current shared application state.
+   * Update audio from the current application state.
+   *
+   * Newer state always wins. If a sync is already in progress, only the latest
+   * pending state is kept.
    *
    * Args:
-   *   state: The latest known application state.
+   *   state: The latest state snapshot.
    */
   async function updateAudioFromState(state) {
     if (!audioReady) {
@@ -355,12 +397,31 @@ async function initDisplayPage() {
       return;
     }
 
-    const resolvedAudio = resolveAudioState(state);
-    await audioEngine.syncFromState(state, resolvedAudio);
+    if (isSyncingAudio) {
+      if (!pendingAudioState || state.revision > pendingAudioState.revision) {
+        pendingAudioState = state;
+      }
+      return;
+    }
+
+    isSyncingAudio = true;
+
+    try {
+      const resolvedAudio = resolveAudioState(state);
+      await audioEngine.syncFromState(state, resolvedAudio);
+    } finally {
+      isSyncingAudio = false;
+
+      if (pendingAudioState) {
+        const nextState = pendingAudioState;
+        pendingAudioState = null;
+        updateAudioFromState(nextState);
+      }
+    }
   }
 
   /**
-   * Unlock audio playback after the first user gesture.
+   * Unlock audio after the first user gesture.
    */
   async function unlockAudio() {
     if (audioReady) {
@@ -377,16 +438,17 @@ async function initDisplayPage() {
     await audioEngine.ensureRunning();
 
     if (pendingAudioState) {
-      const stateToApply = pendingAudioState;
+      const nextState = pendingAudioState;
       pendingAudioState = null;
-      await updateAudioFromState(stateToApply);
-    } else {
-      await updateAudioFromState(currentState);
+      await updateAudioFromState(nextState);
+      return;
     }
+
+    await updateAudioFromState(currentState);
   }
 
   /**
-   * Register the first interaction that unlocks audio.
+   * Bind the gesture that unlocks audio.
    */
   function bindAudioUnlock() {
     const unlockOnce = async () => {
@@ -409,65 +471,33 @@ async function initDisplayPage() {
 
   eventSource.addEventListener("state_snapshot", async (event) => {
     const data = JSON.parse(event.data);
-    console.log("Initial state snapshot received:", data);
     currentState = data;
     renderState(currentState);
     await switchScene(currentState.current_scene?.scene_id ?? null);
-    await updateAudioFromState(currentState);
+    updateAudioFromState(currentState);
   });
 
-  eventSource.addEventListener("scene_changed", async (event) => {
+  eventSource.addEventListener("state_updated", async (event) => {
     const data = JSON.parse(event.data);
-    console.log("Scene changed:", data);
-    applyStatePatch({
-      current_scene: data.scene,
-    });
-    await switchScene(data.scene?.scene_id ?? null);
-    await updateAudioFromState(currentState);
-  });
 
-  eventSource.addEventListener("music_changed", async (event) => {
-    const data = JSON.parse(event.data);
-    console.log("Music changed:", data);
-    applyStatePatch({
-      current_music_playlist: data.music_playlist,
-    });
-    await updateAudioFromState(currentState);
-  });
+    if (data.revision !== undefined && data.revision <= currentState.revision) {
+      return;
+    }
 
-  eventSource.addEventListener("ambience_changed", async (event) => {
-    const data = JSON.parse(event.data);
-    console.log("Ambience changed:", data);
-    applyStatePatch({
-      active_ambiences: data.active_ambiences,
-    });
-    await updateAudioFromState(currentState);
-  });
+    const previousSceneId = currentState.current_scene?.scene_id ?? null;
+    currentState = data;
+    renderState(currentState);
 
-  eventSource.addEventListener("fade_settings_changed", async (event) => {
-    const data = JSON.parse(event.data);
-    console.log("Fade settings changed:", data);
-    applyStatePatch({
-      fade_settings: data.fade_settings,
-    });
-    await updateAudioFromState(currentState);
-  });
+    if (currentState.current_scene?.scene_id !== previousSceneId) {
+      await switchScene(currentState.current_scene?.scene_id ?? null);
+    }
 
-  eventSource.addEventListener("volume_changed", async (event) => {
-    const data = JSON.parse(event.data);
-    console.log("Volume changed:", data);
-    applyStatePatch({
-      current_music_playlist: data.music_playlist ?? currentState.current_music_playlist,
-      active_ambiences: data.active_ambiences ?? currentState.active_ambiences,
-    });
-    await updateAudioFromState(currentState);
+    updateAudioFromState(currentState);
   });
 
   eventSource.onerror = () => {
     console.warn("Display SSE connection lost. Browser will retry automatically.");
   };
-
-  console.log("Display page loaded");
 }
 
 document.addEventListener("DOMContentLoaded", initDisplayPage);
