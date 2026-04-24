@@ -1,377 +1,379 @@
 /**
  * Initialize the GM page behavior.
  *
- * This page will act as the control surface for scenes, music, ambience, and
- * other live state changes that are broadcast to the display page.
+ * The GM page edits a local draft state and syncs the full desired application
+ * state to the backend on demand.
  */
 async function initGmPage() {
-  console.log("GM page loaded");
-
   const [stateResponse, libraryResponse] = await Promise.all([
     fetch("/api/state"),
     fetch("/api/library"),
   ]);
 
-  let currentState = await stateResponse.json();
+  const currentState = await stateResponse.json();
   const library = await libraryResponse.json();
 
-  console.log("Current state:", currentState);
-  console.log("Library:", library);
+  const ui = createUiBindings();
+  const draftState = createDraftState(currentState);
 
-  const sceneList = document.getElementById("scene-list");
-  const musicList = document.getElementById("music-list");
-  const ambienceList = document.getElementById("ambience-list");
+  renderAll(ui, library, draftState);
 
-  const currentScene = document.getElementById("current-scene");
-  const currentMusic = document.getElementById("current-music");
-  const currentMusicVolume = document.getElementById("current-music-volume");
+  bindSceneSelection(ui.sceneList, draftState, library, renderAll.bind(null, ui, library, draftState));
+  bindMusicSelection(ui.musicList, draftState, library, renderAll.bind(null, ui, library, draftState));
+  bindAmbienceControls(ui.ambienceList, draftState, library, renderAll.bind(null, ui, library, draftState));
+  bindFadeControls(ui, draftState);
+  bindSyncButton(ui.syncButton, draftState);
 
-  const fadeMusic = document.getElementById("fade-music");
-  const fadeAmbience = document.getElementById("fade-ambience");
-  const fadeScene = document.getElementById("fade-scene");
-  const saveFadeSettingsButton = document.getElementById("save-fade-settings");
+  renderAll(ui, library, draftState);
+}
 
-  const volumeMusic = document.getElementById("volume-music");
+/**
+ * Create DOM bindings for the GM page.
+ *
+ * Returns:
+ *   A dictionary of relevant DOM elements.
+ */
+function createUiBindings() {
+  return {
+    currentScene: document.getElementById("current-scene"),
+    currentMusic: document.getElementById("current-music"),
+    sceneList: document.getElementById("scene-list"),
+    musicList: document.getElementById("music-list"),
+    ambienceList: document.getElementById("ambience-list"),
+    fadeMusic: document.getElementById("fade-music"),
+    fadeAmbience: document.getElementById("fade-ambience"),
+    fadeScene: document.getElementById("fade-scene"),
+    syncButton: document.getElementById("sync-state"),
+  };
+}
 
-  /**
-   * Render the current state into the GM control UI.
-   *
-   * Args:
-   *   state: The latest known application state.
-   */
-  function renderState(state) {
-    if (currentScene) {
-      currentScene.textContent = state.current_scene?.scene_id ?? "None";
-    }
+/**
+ * Create a mutable draft copy of the application state.
+ *
+ * Args:
+ *   state: The canonical state returned by the backend.
+ *
+ * Returns:
+ *   A locally editable draft state.
+ */
+function createDraftState(state) {
+  return {
+    scene: state.scene ?? null,
+    music: state.music ?? null,
+    ambiences: state.ambiences ?? {},
+    fade_settings: state.fade_settings ?? {
+      music: 5.0,
+      ambience: 10.0,
+      scene: 5.0,
+    },
+  };
+}
 
-    if (currentMusic) {
-      currentMusic.textContent = state.current_music_playlist?.playlist_id ?? "None";
-    }
+/**
+ * Render all GM controls from the current draft state.
+ *
+ * Args:
+ *   ui: DOM element bindings.
+ *   library: The discovered media library.
+ *   draftState: The editable local state.
+ */
+function renderAll(ui, library, draftState) {
+  renderCurrentState(ui, draftState);
+  renderSceneList(ui.sceneList, library, draftState);
+  renderMusicList(ui.musicList, library, draftState);
+  renderAmbienceList(ui.ambienceList, library, draftState);
+  renderFadeControls(ui, draftState);
+}
 
-    if (currentMusicVolume) {
-      currentMusicVolume.textContent = String(state.current_music_playlist?.volume ?? 1.0);
-    }
-
-    if (fadeMusic) {
-      fadeMusic.value = state.fade_settings?.music ?? 5.0;
-    }
-
-    if (fadeAmbience) {
-      fadeAmbience.value = state.fade_settings?.ambience ?? 10.0;
-    }
-
-    if (fadeScene) {
-      fadeScene.value = state.fade_settings?.scene ?? 5.0;
-    }
-
-    if (volumeMusic) {
-      volumeMusic.value = state.current_music_playlist?.volume ?? 1.0;
-    }
-
-    setActiveButtonState(sceneList, state.current_scene?.scene_id ?? null);
-    setActiveButtonState(musicList, state.current_music_playlist?.playlist_id ?? null);
-    renderAmbienceControls(state.active_ambiences ?? {});
+/**
+ * Render the current scene and music labels.
+ *
+ * Args:
+ *   ui: DOM element bindings.
+ *   draftState: The editable local state.
+ */
+function renderCurrentState(ui, draftState) {
+  if (ui.currentScene) {
+    ui.currentScene.textContent = draftState.scene?.scene_id ?? "None";
   }
 
-  /**
-   * Replace the current state with a newer copy and re-render.
-   *
-   * Args:
-   *   nextState: The updated application state.
-   */
-  function applyFullState(nextState) {
-    currentState = nextState;
-    renderState(currentState);
+  if (ui.currentMusic) {
+    ui.currentMusic.textContent = draftState.music?.playlist_id ?? "None";
+  }
+}
+
+/**
+ * Render the scene selection list.
+ *
+ * Args:
+ *   container: The scene list container.
+ *   library: The discovered media library.
+ *   draftState: The editable local state.
+ */
+function renderSceneList(container, library, draftState) {
+  if (!container) {
+    return;
   }
 
-  /**
-   * Merge a partial state update into the current state and re-render.
-   *
-   * Args:
-   *   patch: The partial update returned by the backend.
-   */
-  function applyStatePatch(patch) {
-    currentState = {
-      ...currentState,
-      ...patch,
-    };
-    renderState(currentState);
-  }
+  container.innerHTML = "";
 
-  /**
-   * Toggle active button styling within a container.
-   *
-   * Args:
-   *   container: The element containing selectable buttons.
-   *   activeValue: The currently active value.
-   */
-  function setActiveButtonState(container, activeValue) {
-    if (!container) {
-      return;
-    }
+  library.scenes.forEach((scene) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = scene.name;
+    button.classList.toggle("active", draftState.scene?.scene_id === scene.id);
 
-    container.querySelectorAll("button").forEach((button) => {
-      button.classList.toggle("active", button.dataset.value === activeValue);
+    button.addEventListener("click", () => {
+      draftState.scene = {
+        scene_id: scene.id,
+        transition: draftState.scene?.transition ?? null,
+        opacity: draftState.scene?.opacity ?? 1.0,
+      };
+      renderSceneList(container, library, draftState);
+      renderCurrentState(createUiBindings(), draftState);
     });
+
+    container.appendChild(button);
+  });
+}
+
+/**
+ * Render the music selection list.
+ *
+ * Args:
+ *   container: The music list container.
+ *   library: The discovered media library.
+ *   draftState: The editable local state.
+ */
+function renderMusicList(container, library, draftState) {
+  if (!container) {
+    return;
   }
 
-  /**
-   * Render ambience toggles and per-item volume controls.
-   *
-   * Args:
-   *   activeAmbiences: The ambience map from application state.
-   */
-  function renderAmbienceControls(activeAmbiences) {
-    if (!ambienceList) {
-      return;
-    }
+  container.innerHTML = "";
 
-    ambienceList.innerHTML = "";
+  library.music_playlists.forEach((playlist) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = playlist.name;
+    button.classList.toggle("active", draftState.music?.playlist_id === playlist.id);
 
-    library.ambience_folders.forEach((folder) => {
-      folder.tracks.forEach((track) => {
-        const ambienceId = track.name;
-        const activeAmbience = activeAmbiences[ambienceId] ?? null;
-        const isActive = Boolean(activeAmbience);
+    button.addEventListener("click", () => {
+      draftState.music = {
+        playlist_id: playlist.id,
+      };
+      renderMusicList(container, library, draftState);
+      renderCurrentState(createUiBindings(), draftState);
+    });
 
-        const wrapper = document.createElement("div");
-        wrapper.className = "ambience-control";
+    container.appendChild(button);
+  });
+}
 
-        const toggleButton = document.createElement("button");
-        toggleButton.type = "button";
-        toggleButton.textContent = isActive ? `Remove ${track.name}` : `Add ${track.name}`;
-        toggleButton.dataset.value = ambienceId;
-        toggleButton.classList.toggle("active", isActive);
+/**
+ * Render ambience toggles and per-item controls.
+ *
+ * Args:
+ *   container: The ambience list container.
+ *   library: The discovered media library.
+ *   draftState: The editable local state.
+ */
+function renderAmbienceList(container, library, draftState) {
+  if (!container) {
+    return;
+  }
 
-        toggleButton.addEventListener("click", async () => {
-          const nextAmbiences = {
-            ...(currentState.active_ambiences ?? {}),
+  container.innerHTML = "";
+
+  library.ambience_folders.forEach((folder) => {
+    folder.tracks.forEach((track) => {
+      const ambienceId = track.name;
+      const activeAmbience = draftState.ambiences[ambienceId] ?? null;
+      const isActive = Boolean(activeAmbience);
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "ambience-control";
+
+      const toggleButton = document.createElement("button");
+      toggleButton.type = "button";
+      toggleButton.textContent = isActive ? `Remove ${track.name}` : `Add ${track.name}`;
+      toggleButton.classList.toggle("active", isActive);
+
+      toggleButton.addEventListener("click", () => {
+        if (draftState.ambiences[ambienceId]) {
+          delete draftState.ambiences[ambienceId];
+        } else {
+          draftState.ambiences[ambienceId] = {
+            ambience_id: ambienceId,
+            volume: 1.0,
           };
-
-          if (nextAmbiences[ambienceId]) {
-            delete nextAmbiences[ambienceId];
-          } else {
-            nextAmbiences[ambienceId] = {
-              ambience_id: ambienceId,
-              volume: 1.0,
-            };
-          }
-
-          const updatedState = await setAmbiences(nextAmbiences);
-          applyFullState(updatedState);
-        });
-
-        wrapper.appendChild(toggleButton);
-
-        if (isActive) {
-          const volumeLabel = document.createElement("label");
-          volumeLabel.textContent = `${track.name} volume`;
-          volumeLabel.htmlFor = `ambience-volume-${ambienceId}`;
-
-          const volumeInput = document.createElement("input");
-          volumeInput.type = "range";
-          volumeInput.id = `ambience-volume-${ambienceId}`;
-          volumeInput.min = "0";
-          volumeInput.max = "1";
-          volumeInput.step = "0.01";
-          volumeInput.value = activeAmbience.volume ?? 1.0;
-
-          volumeInput.addEventListener("change", async () => {
-            const updatedAmbiences = {
-              ...(currentState.active_ambiences ?? {}),
-              [ambienceId]: {
-                ...(currentState.active_ambiences?.[ambienceId] ?? {}),
-                ambience_id: ambienceId,
-                volume: Number(volumeInput.value),
-              },
-            };
-
-            const updatedState = await setAmbiences(updatedAmbiences);
-            applyFullState(updatedState);
-          });
-
-          wrapper.appendChild(volumeLabel);
-          wrapper.appendChild(volumeInput);
         }
 
-        ambienceList.appendChild(wrapper);
-      });
-    });
-  }
-
-  /**
-   * Send a JSON payload to the backend and return the parsed response.
-   *
-   * Args:
-   *   url: The endpoint URL to post to.
-   *   payload: The request body to send as JSON.
-   *
-   * Returns:
-   *   The parsed JSON response body.
-   */
-  async function postJson(url, payload) {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Request failed: ${response.status}`);
-    }
-
-    return response.json();
-  }
-
-  /**
-   * Update the currently selected scene in the backend.
-   *
-   * Args:
-   *   sceneId: The selected scene identifier.
-   */
-  async function setScene(sceneId) {
-    const updatedState = await postJson("/api/state/scene", {
-      scene_id: sceneId,
-    });
-    console.log("Scene updated:", updatedState);
-    return updatedState;
-  }
-
-  /**
-   * Update the currently selected music playlist in the backend.
-   *
-   * Args:
-   *   musicPlaylistId: The selected music playlist identifier.
-   */
-  async function setMusic(musicPlaylistId) {
-    const updatedState = await postJson("/api/state/music", {
-      music_playlist: musicPlaylistId,
-    });
-    console.log("Music updated:", updatedState);
-    return updatedState;
-  }
-
-  /**
-   * Update the active ambience map in the backend.
-   *
-   * Args:
-   *   activeAmbiences: The ambience id -> active ambience object mapping.
-   */
-  async function setAmbiences(activeAmbiences) {
-    const updatedState = await postJson("/api/state/ambience", {
-      active_ambiences: activeAmbiences,
-    });
-    console.log("Ambiences updated:", updatedState);
-    return updatedState;
-  }
-
-  /**
-   * Update fade durations in the backend.
-   *
-   * Args:
-   *   fadeSettings: The fade settings payload.
-   */
-  async function setFadeSettings(fadeSettings) {
-    const updatedState = await postJson("/api/state/fade", {
-      fade_settings: fadeSettings,
-    });
-    console.log("Fade settings updated:", updatedState);
-    return updatedState;
-  }
-
-  /**
-   * Update audio-related runtime values in the backend.
-   *
-   * Args:
-   *   volumes: The volume payload for the current music and active ambiences.
-   */
-  async function setVolumes(volumes) {
-    const updatedState = await postJson("/api/state/volume", volumes);
-    console.log("Volumes updated:", updatedState);
-    return updatedState;
-  }
-
-  if (sceneList) {
-    sceneList.innerHTML = "";
-    library.scenes.forEach((scene) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = scene.name;
-      button.dataset.value = scene.id;
-      button.addEventListener("click", async () => {
-        const updatedState = await setScene(scene.id);
-        applyFullState(updatedState);
-      });
-      sceneList.appendChild(button);
-    });
-  }
-
-  if (musicList) {
-    musicList.innerHTML = "";
-    library.music_playlists.forEach((playlist) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = playlist.name;
-      button.dataset.value = playlist.id;
-      button.addEventListener("click", async () => {
-        const updatedState = await setMusic(playlist.id);
-        applyFullState(updatedState);
-      });
-      musicList.appendChild(button);
-    });
-  }
-
-  if (saveFadeSettingsButton && fadeMusic && fadeAmbience && fadeScene) {
-    saveFadeSettingsButton.addEventListener("click", async () => {
-      const updatedState = await setFadeSettings({
-        music: Number(fadeMusic.value),
-        ambience: Number(fadeAmbience.value),
-        scene: Number(fadeScene.value),
-      });
-      applyFullState(updatedState);
-    });
-  }
-
-  if (volumeMusic) {
-    volumeMusic.addEventListener("change", async () => {
-      const updatedAmbiences = {};
-
-      Object.entries(currentState.active_ambiences ?? {}).forEach(([ambienceId, ambience]) => {
-        updatedAmbiences[ambienceId] = {
-          ...ambience,
-          ambience_id: ambienceId,
-          volume: ambience.volume ?? 1.0,
-        };
+        renderAmbienceList(container, library, draftState);
       });
 
-      const nextState = {
-        ...currentState,
-        current_music_playlist: {
-          ...(currentState.current_music_playlist ?? {}),
-          volume: Number(volumeMusic.value),
-        },
-      };
+      wrapper.appendChild(toggleButton);
 
-      currentState = nextState;
-      renderState(currentState);
+      container.appendChild(wrapper);
+    });
+  });
+}
 
-      const updatedState = await setVolumes({
-        music_volume: Number(volumeMusic.value),
-        ambience_volumes: Object.fromEntries(
-          Object.entries(updatedAmbiences).map(([ambienceId, ambience]) => [
-            ambienceId,
-            ambience.volume ?? 1.0,
-          ])
-        ),
-      });
+/**
+ * Render fade duration inputs.
+ *
+ * Args:
+ *   ui: DOM element bindings.
+ *   draftState: The editable local state.
+ */
+function renderFadeControls(ui, draftState) {
+  if (ui.fadeMusic) {
+    ui.fadeMusic.value = draftState.fade_settings?.music ?? 5.0;
+  }
 
-      applyFullState(updatedState);
+  if (ui.fadeAmbience) {
+    ui.fadeAmbience.value = draftState.fade_settings?.ambience ?? 10.0;
+  }
+
+  if (ui.fadeScene) {
+    ui.fadeScene.value = draftState.fade_settings?.scene ?? 5.0;
+  }
+}
+
+/**
+ * Bind fade input handlers so they update the draft state.
+ *
+ * Args:
+ *   ui: DOM element bindings.
+ *   draftState: The editable local state.
+ */
+function bindFadeControls(ui, draftState) {
+  if (ui.fadeMusic) {
+    ui.fadeMusic.addEventListener("change", () => {
+      draftState.fade_settings.music = Number(ui.fadeMusic.value);
     });
   }
 
-  renderState(currentState);
+  if (ui.fadeAmbience) {
+    ui.fadeAmbience.addEventListener("change", () => {
+      draftState.fade_settings.ambience = Number(ui.fadeAmbience.value);
+    });
+  }
+
+  if (ui.fadeScene) {
+    ui.fadeScene.addEventListener("change", () => {
+      draftState.fade_settings.scene = Number(ui.fadeScene.value);
+    });
+  }
+}
+
+/**
+ * Bind the sync button to submit the full draft state.
+ *
+ * Args:
+ *   button: The sync button element.
+ *   draftState: The editable local state.
+ */
+function bindSyncButton(button, draftState) {
+  if (!button) {
+    return;
+  }
+
+  button.addEventListener("click", async () => {
+    const updatedState = await syncState(draftState);
+    Object.assign(draftState, updatedState);
+    window.location.reload();
+  });
+}
+
+/**
+ * Bind scene selection handlers.
+ *
+ * Args:
+ *   container: The scene container.
+ *   draftState: The editable local state.
+ *   library: The discovered media library.
+ *   rerender: Callback to refresh the UI.
+ */
+function bindSceneSelection(container, draftState, library, rerender) {
+  if (!container) {
+    return;
+  }
+
+  container.addEventListener("click", () => {
+    rerender();
+  });
+
+  window.addEventListener("click", () => {
+    rerender();
+  });
+}
+
+/**
+ * Bind music selection handlers.
+ *
+ * Args:
+ *   container: The music container.
+ *   draftState: The editable local state.
+ *   library: The discovered media library.
+ *   rerender: Callback to refresh the UI.
+ */
+function bindMusicSelection(container, draftState, library, rerender) {
+  if (!container) {
+    return;
+  }
+
+  container.addEventListener("click", () => {
+    rerender();
+  });
+
+  window.addEventListener("click", () => {
+    rerender();
+  });
+}
+
+/**
+ * Bind ambience handlers.
+ *
+ * Args:
+ *   container: The ambience container.
+ *   draftState: The editable local state.
+ *   library: The discovered media library.
+ *   rerender: Callback to refresh the UI.
+ */
+function bindAmbienceControls(container, draftState, library, rerender) {
+  if (!container) {
+    return;
+  }
+
+  container.addEventListener("click", () => {
+    rerender();
+  });
+}
+
+/**
+ * Send the full draft state to the backend.
+ *
+ * Args:
+ *   draftState: The editable local state.
+ *
+ * Returns:
+ *   The canonical backend state.
+ */
+async function syncState(draftState) {
+  const response = await fetch("/api/state/sync", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(draftState),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Sync failed: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 document.addEventListener("DOMContentLoaded", initGmPage);

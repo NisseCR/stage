@@ -10,7 +10,6 @@
     <h2>Current State</h2>
     <p><strong>Scene:</strong> <span id="current-scene">None</span></p>
     <p><strong>Music:</strong> <span id="current-music">None</span></p>
-    <p><strong>Music Volume:</strong> <span id="current-music-volume">1.0</span></p>
   </section>
 
   <section>
@@ -29,14 +28,6 @@
   </section>
 
   <section>
-    <h2>Volume Controls</h2>
-    <div>
-      <label for="volume-music">Music Volume</label>
-      <input id="volume-music" type="range" min="0" max="1" step="0.01">
-    </div>
-  </section>
-
-  <section>
     <h2>Fade Durations</h2>
     <div>
       <label for="fade-music">Music Fade</label>
@@ -50,9 +41,10 @@
       <label for="fade-scene">Scene Fade</label>
       <input id="fade-scene" type="number" min="0" step="0.1">
     </div>
-    <div>
-      <button id="save-fade-settings" type="button">Save Fade Settings</button>
-    </div>
+  </section>
+
+  <section>
+    <button id="sync-state" type="button">Sync</button>
   </section>
 </main>
 {% endblock %}

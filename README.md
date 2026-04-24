@@ -4,7 +4,7 @@ Immersion is a local web application for running a D&D table with immersive visu
 
 It is designed around two browser views:
 
-- **GM page**: the control surface used by the Game Master to select scenes, playlists, ambience, and runtime settings
+- **GM page**: the control surface used by the Game Master to edit the desired session state and sync it to the backend
 - **Display page**: a read-only output view intended for streaming to Discord or showing on a second screen
 
 The goal is to keep the experience lightweight, flexible, and easy to use during a session while still supporting rich atmosphere through scene visuals and audio playback.
@@ -12,7 +12,7 @@ The goal is to keep the experience lightweight, flexible, and easy to use during
 ## Project context
 
 This project is intended for tabletop roleplaying games, especially Dungeons & Dragons sessions.  
-The GM uses the control interface to drive the current scene, while the display page shows the immersive output for players or stream viewers.
+The GM uses the control interface to drive the current state, while the display page shows the immersive output for players or stream viewers.
 
 The display is meant to support:
 - scene backgrounds
@@ -56,10 +56,13 @@ The application uses:
   Broadcasts SSE updates to connected clients.
 
 - `static/js/gm.js`  
-  Handles the GM control flow and sends state updates to the backend.
+  Handles the GM control flow and sends the full state to the backend.
 
 - `static/js/display.js`  
-  Listens for SSE updates and renders the current state on the display page.
+  Bootstraps the display page and forwards state to the scene engine.
+
+- `static/js/scene_engine.js`  
+  Reconciles the desired scene state and handles transitions.
 
 ## Asset structure
 
@@ -79,7 +82,7 @@ This structure keeps the project organized and makes future asset management eas
 
 - GM and display pages are available
 - Live backend state is shared through a single source of truth
-- GM actions update application state through API endpoints
+- GM edits are synced through one endpoint
 - Display page listens for updates via SSE
 - Scene definitions are loaded from JSON
 - Music and ambience libraries are discovered from the filesystem
@@ -93,7 +96,6 @@ The application currently tracks:
 - selected music playlist
 - active ambience items
 - fade settings
-- runtime volume values associated with active media items
 
 This structure is designed to support future visual and audio playback logic without needing a major refactor.
 
@@ -116,10 +118,9 @@ Add the remaining control components needed to fully manage session state:
 - playlist selection
 - ambience toggles
 - fade duration controls
-- per-channel volume controls
 
 ### 2. Display page rendering
-Replace the placeholder display output with real visual rendering:
+Continue refining the visual rendering layer:
 - background scene rendering
 - layered image/video support
 - active scene transitions
@@ -129,7 +130,6 @@ Replace the placeholder display output with real visual rendering:
 Implement playback logic for:
 - music playlists
 - ambience loops
-- volume changes
 - fades and transitions
 
 ### 4. Visual polish

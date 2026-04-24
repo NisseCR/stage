@@ -78,3 +78,7 @@ body {
   border-radius: 0.5rem;
   font-family: monospace;
 }
+
+.page {
+  padding: 1rem;
+}
