@@ -57,33 +57,59 @@
         </table>
       </div>
     {% else %}
-      <div class="gm-section">
-        <form id="scene-form" class="editor-form">
-          <div class="form-group">
-            <label for="scene-name">Name</label>
-            <input type="text" id="scene-name" name="name" required placeholder="e.g. Whispering Woods">
-            <div class="field-error" id="error-name"></div>
-          </div>
+      <div class="editor-layout">
+        <div class="editor-form-scroll">
+          <form id="scene-form" class="editor-form">
+            <div class="form-group">
+              <label for="scene-name">Name</label>
+              <input type="text" id="scene-name" name="name" required placeholder="e.g. Whispering Woods">
+              <div class="field-error" id="error-name"></div>
+            </div>
 
-          <div class="form-group">
-            <label for="scene-id">ID (Slug)</label>
-            <input type="text" id="scene-id" name="id" required placeholder="e.g. whispering-woods"
-                   {% if scene_id != 'new' %}readonly{% endif %}>
-            <div class="field-error" id="error-id"></div>
-          </div>
+            <div class="form-group">
+              <label for="scene-id">ID (Slug)</label>
+              <input type="text" id="scene-id" name="id" required placeholder="e.g. whispering-woods"
+                     {% if scene_id != 'new' %}readonly{% endif %}>
+              <div class="field-error" id="error-id"></div>
+            </div>
 
-          <div class="form-group">
-            <label for="scene-background">Background Asset</label>
-            <input type="text" id="scene-background" name="background" required placeholder="e.g. forest.jpg">
-            <div class="field-error" id="error-background"></div>
-          </div>
+            <div class="form-group">
+              <label>Background</label>
+              <div class="bg-picker-row">
+                <img id="bg-thumb" class="layer-thumbnail" src="" alt="" style="display: none;">
+                <div class="layer-info">
+                  <div id="bg-filename" class="layer-filename">No background selected</div>
+                </div>
+                <button type="button" id="change-bg-btn" class="btn-secondary">Change…</button>
+              </div>
+              <input type="hidden" id="scene-background" name="background">
+              <div class="field-error" id="error-background"></div>
+            </div>
 
-          <div class="form-group">
-            <label for="scene-layers">Layers (JSON Array)</label>
-            <textarea id="scene-layers" name="layers" rows="15" placeholder='[{"src": "mist.webm", "type": "video", "opacity": 0.5}]'></textarea>
-            <div class="field-error" id="error-layers"></div>
+            <div class="form-group">
+              <label>Layers</label>
+              <div id="layer-list" class="layer-list">
+                <!-- Layer cards go here -->
+              </div>
+              <button type="button" id="add-layer-btn" class="btn-add-layer">+ Add Layer</button>
+              <div class="field-error" id="error-layers"></div>
+            </div>
+          </form>
+        </div>
+
+        <div class="preview-pane">
+          <div class="control-label-row">
+            <span class="control-label">Live Preview</span>
+            <button type="button" id="pop-out-btn" class="btn-reset">Pop out preview ↗</button>
           </div>
-        </form>
+          <div id="preview-stage" class="preview-container">
+            <img class="scene-background" src="" alt="" style="display: none;">
+            <div class="scene-layers"></div>
+          </div>
+          <div class="control-label" style="text-align: center; opacity: 0.3;">
+            Preview updates automatically while you edit
+          </div>
+        </div>
       </div>
     {% endif %}
   </div>
@@ -91,9 +117,12 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <script>
   window.EDIT_MODE = {{ 'true' if edit_mode else 'false' }};
   window.SCENE_ID = "{{ scene_id if scene_id else '' }}";
 </script>
+<script src="/static/js/scene_engine.js"></script>
+<script src="/static/js/asset_picker.js"></script>
 <script src="/static/js/editor.js"></script>
 {% endblock %}

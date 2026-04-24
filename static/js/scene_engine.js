@@ -9,10 +9,11 @@ class SceneEngine {
    *   options: Scene engine dependencies and initial data.
    */
   constructor(options) {
-    this.sceneBackground = options.sceneBackground;
-    this.sceneLayers = options.sceneLayers;
-    this.sceneFadeOverlay = options.sceneFadeOverlay;
-    this.sceneMap = options.sceneMap;
+    this.container = options.container;
+    this.sceneBackground = options.sceneBackground || this.container?.querySelector(".scene-background");
+    this.sceneLayers = options.sceneLayers || this.container?.querySelector(".scene-layers");
+    this.sceneFadeOverlay = options.sceneFadeOverlay || this.container?.querySelector(".scene-fade-overlay");
+    this.sceneMap = options.sceneMap || new Map();
 
     this.currentSceneId = null;
     this.isTransitioning = false;

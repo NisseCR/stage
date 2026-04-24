@@ -1,0 +1,17 @@
+{
+  "id": "mountain",
+  "name": "Mountain",
+  "background": "precipice.jpg",
+  "layers": [
+    {
+      "type": "video",
+      "opacity": 1.0,
+      "brightness": 1.0,
+      "grayscale": 0.0,
+      "blur": 0.0,
+      "flip": false,
+      "blend_mode": "normal",
+      "src": "mountain.webm"
+    }
+  ]
+}

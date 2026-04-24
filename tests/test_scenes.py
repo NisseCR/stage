@@ -163,3 +163,69 @@ def test_asset_listing(client, temp_data_dir):
     assert len(videos) == 1
     assert videos[0]["name"] == "wind.webm"
     assert videos[0]["kind"] == "video"
+
+def test_legacy_migration(client, temp_data_dir):
+    """
+    Test that legacy transform and filter keys are migrated correctly.
+    """
+    legacy_data = {
+        "id": "legacy-scene",
+        "name": "Legacy Scene",
+        "background": "gate.jpg",
+        "layers": [
+            {
+                "src": "wind.webm",
+                "transform": "scaleX(-1)",
+                "filter": "blur(5px) brightness(0.8) grayscale(0.5)"
+            }
+        ]
+    }
+    
+    scene_file = temp_data_dir["scenes"] / "legacy-scene.json"
+    with open(scene_file, "w") as f:
+        json.dump(legacy_data, f)
+        
+    response = client.get("/api/scenes/legacy-scene")
+    assert response.status_code == 200
+    scene = response.json()
+    
+    layer = scene["layers"][0]
+    assert layer["flip"] is True
+    assert layer["blur"] == 5.0
+    assert layer["brightness"] == 0.8
+    assert layer["grayscale"] == 0.5
+    assert layer["type"] == "video"
+
+def test_legacy_migration_unsupported(client, temp_data_dir, caplog):
+    """
+    Test that unsupported legacy keys are logged and ignored.
+    """
+    legacy_data = {
+        "id": "unsupported-scene",
+        "name": "Unsupported Scene",
+        "background": "gate.jpg",
+        "layers": [
+            {
+                "src": "wind.webm",
+                "transform": "rotate(45deg)",
+                "filter": "sepia(0.5)"
+            }
+        ]
+    }
+    
+    scene_file = temp_data_dir["scenes"] / "unsupported-scene.json"
+    with open(scene_file, "w") as f:
+        json.dump(legacy_data, f)
+        
+    import logging
+    with caplog.at_level(logging.WARNING):
+        response = client.get("/api/scenes/unsupported-scene")
+        
+    assert response.status_code == 200
+    assert "Could not migrate legacy transform: rotate(45deg)" in caplog.text
+    assert "Could not migrate legacy filter components: sepia(0.5)" in caplog.text
+    
+    scene = response.json()
+    layer = scene["layers"][0]
+    assert layer["flip"] is False # Default
+    assert layer["blur"] == 0.0 # Default

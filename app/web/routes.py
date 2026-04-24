@@ -107,6 +107,18 @@ async def editor_edit_page(request: Request, scene_id: str) -> HTMLResponse:
     )
 
 
+@router.get("/editor/{scene_id}/preview", response_class=HTMLResponse)
+async def editor_preview_page(request: Request, scene_id: str) -> HTMLResponse:
+    """
+    Render a dedicated preview page for a scene.
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="display.html",
+        context={"preview_mode": True, "scene_id": scene_id},
+    )
+
+
 @router.get("/events")
 async def event_stream(request: Request):
     """

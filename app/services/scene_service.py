@@ -209,6 +209,8 @@ class SceneService:
         """
         Convert a raw JSON layer entry into a SceneLayer model.
 
+        Supports one-shot migration from legacy 'transform' and 'filter' keys.
+
         Args:
             layer: A raw layer entry from the scene JSON file.
 
@@ -225,16 +227,59 @@ class SceneService:
         if resolved_type is None:
             resolved_type = self._infer_layer_type(src)
 
-        return SceneLayer(
-            src=self._to_static_url(src),
-            type=resolved_type,
-            opacity=layer.get("opacity", 1.0),
-            brightness=layer.get("brightness", 1.0),
-            grayscale=layer.get("grayscale", 0.0),
-            blur=layer.get("blur", 0.0),
-            flip=layer.get("flip", False),
-            blend_mode=layer.get("blend_mode", "normal"),
-        )
+        # Base attributes
+        data = {
+            "src": self._to_static_url(src),
+            "type": resolved_type,
+            "opacity": layer.get("opacity", 1.0),
+            "brightness": layer.get("brightness", 1.0),
+            "grayscale": layer.get("grayscale", 0.0),
+            "blur": layer.get("blur", 0.0),
+            "flip": layer.get("flip", False),
+            "blend_mode": layer.get("blend_mode", "normal"),
+        }
+
+        # Legacy migration: transform
+        if "transform" in layer:
+            transform = layer["transform"]
+            if transform == "scaleX(-1)":
+                data["flip"] = True
+            elif transform and transform != "none":
+                import logging
+                logging.warning(f"Could not migrate legacy transform: {transform}")
+
+        # Legacy migration: filter
+        if "filter" in layer:
+            filter_str = layer["filter"]
+            if filter_str and filter_str != "none":
+                import re
+                
+                # blur(Npx)
+                blur_match = re.search(r"blur\((\d+(?:\.\d+)?)px\)", filter_str)
+                if blur_match:
+                    data["blur"] = float(blur_match.group(1))
+                
+                # brightness(N)
+                bright_match = re.search(r"brightness\((\d+(?:\.\d+)?)\)", filter_str)
+                if bright_match:
+                    data["brightness"] = float(bright_match.group(1))
+                
+                # grayscale(N)
+                gray_match = re.search(r"grayscale\((\d+(?:\.\d+)?)\)", filter_str)
+                if gray_match:
+                    data["grayscale"] = float(gray_match.group(1))
+                
+                # Log what we couldn't migrate
+                known_patterns = [r"blur\(.*?\)", r"brightness\(.*?\)", r"grayscale\(.*?\)"]
+                remaining = filter_str
+                for pattern in known_patterns:
+                    remaining = re.sub(pattern, "", remaining).strip()
+                
+                if remaining:
+                    import logging
+                    logging.warning(f"Could not migrate legacy filter components: {remaining}")
+
+        return SceneLayer(**data)
 
     def _infer_layer_type(self, asset_name: str) -> str:
         """

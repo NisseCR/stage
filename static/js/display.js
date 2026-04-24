@@ -37,9 +37,7 @@ async function initDisplayPage() {
   });
 
   const sceneEngine = new SceneEngine({
-    sceneBackground,
-    sceneLayers,
-    sceneFadeOverlay,
+    container: document.getElementById("scene-stage"),
     sceneMap,
   });
 
