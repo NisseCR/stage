@@ -23,5 +23,11 @@
     "name": "Ship",
     "background": "deck.jpg",
     "layers": ["wind.webm"]
+  },
+  {
+    "id": "netheril",
+    "name": "Netheril",
+    "background": "lower-netheril.jpg",
+    "layers": ["wind.webm"]
   }
 ]
