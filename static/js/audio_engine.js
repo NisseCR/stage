@@ -228,6 +228,14 @@ class AudioEngine {
       return;
     }
 
+    if (this.musicState.playlistId !== playlist.id || this.currentDesiredState.music?.playlist_id !== playlist.id) {
+      return;
+    }
+
+    if (this.musicState.trackIndex < 0 || this.musicState.trackIndex >= playlist.tracks.length) {
+      return;
+    }
+
     const source = this.audioContext.createBufferSource();
     const gainNode = this.audioContext.createGain();
 
@@ -255,6 +263,11 @@ class AudioEngine {
     } catch (error) {
       console.warn("Failed to start music track:", track.url, error);
       await this.handleMusicTrackFailure();
+      return;
+    }
+
+    if (this.musicState.playlistId !== playlist.id || this.currentDesiredState.music?.playlist_id !== playlist.id) {
+      this.disposeMusicSource(source, gainNode);
       return;
     }
 
@@ -424,6 +437,10 @@ class AudioEngine {
       return;
     }
 
+    if (!this.currentDesiredState.ambiences[ambienceId]) {
+      return;
+    }
+
     const source = this.audioContext.createBufferSource();
     const gainNode = this.audioContext.createGain();
 
@@ -445,6 +462,13 @@ class AudioEngine {
 
     try {
       source.start(0);
+
+      if (!this.currentDesiredState.ambiences[ambienceId]) {
+        this.disposeSource(source);
+        this.activeAmbienceSources.delete(ambienceId);
+        return;
+      }
+
       await this.fadeGainTo(gainNode, targetVolume, this.fadeSettings.ambience);
 
       const currentEntry = this.activeAmbienceSources.get(ambienceId);
