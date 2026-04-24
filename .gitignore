@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+static/assets/**
+!static/assets/
+!static/assets/audio/
+!static/assets/images/
+!static/assets/video/
+!static/assets/**/.gitkeep
