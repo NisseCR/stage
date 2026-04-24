@@ -172,7 +172,8 @@ class AudioEngine {
     });
 
     audio.addEventListener("error", async () => {
-      if (token !== this.musicState.playbackToken) {
+      const currentAudio = this.musicState.audioElement;
+      if (token !== this.musicState.playbackToken || currentAudio !== audio) {
         return;
       }
 
@@ -192,7 +193,7 @@ class AudioEngine {
 
       console.log("Playing music track:", track.name);
     } catch (error) {
-      if (token !== this.musicState.playbackToken) {
+      if (token !== this.musicState.playbackToken || this.musicState.audioElement !== audio) {
         return;
       }
 
@@ -324,25 +325,44 @@ class AudioEngine {
       return;
     }
 
+    const token = Symbol(ambienceId);
     const audio = new Audio(trackUrl);
     audio.preload = "auto";
     audio.loop = true;
     audio.crossOrigin = "anonymous";
 
+    this.activeAmbienceSources.set(ambienceId, {
+      audio,
+      ambience,
+      token,
+    });
+
     audio.addEventListener("error", () => {
+      const currentEntry = this.activeAmbienceSources.get(ambienceId);
+      if (!currentEntry || currentEntry.token !== token) {
+        return;
+      }
+
       console.warn("Ambience track failed to load:", trackUrl);
       this.stopAmbience(ambienceId);
     });
 
-    this.activeAmbienceSources.set(ambienceId, {
-      audio,
-      ambience,
-    });
-
     try {
       await audio.play();
+
+      const currentEntry = this.activeAmbienceSources.get(ambienceId);
+      if (!currentEntry || currentEntry.token !== token) {
+        audio.pause();
+        return;
+      }
+
       console.log("Playing ambience:", ambienceId);
     } catch (error) {
+      const currentEntry = this.activeAmbienceSources.get(ambienceId);
+      if (!currentEntry || currentEntry.token !== token) {
+        return;
+      }
+
       console.warn("Failed to play ambience track:", error);
       this.stopAmbience(ambienceId);
     }
@@ -360,10 +380,11 @@ class AudioEngine {
       return;
     }
 
+    this.activeAmbienceSources.delete(ambienceId);
+
     entry.audio.pause();
     entry.audio.src = "";
     entry.audio.load();
-    this.activeAmbienceSources.delete(ambienceId);
   }
 
   /**
