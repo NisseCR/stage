@@ -14,29 +14,31 @@ def to_kebab_case(name):
     # Join with hyphens
     return '-'.join(words) + suffix.lower()
 
-def rename_music_files():
-    music_dir = Path('../static/assets/audio/music')
-    if not music_dir.exists():
-        print(f'Error: {music_dir} does not exist')
+def rename_audio_files(base_dir):
+    audio_dir = Path(base_dir)
+    if not audio_dir.exists():
+        print(f'Error: {audio_dir} does not exist')
         return
 
-    for playlist_folder in music_dir.iterdir():
-        if not playlist_folder.is_dir():
+    for category_folder in audio_dir.iterdir():
+        if not category_folder.is_dir():
             continue
         
-        print(f'Processing playlist: {playlist_folder.name}')
-        for track in playlist_folder.iterdir():
+        print(f'Processing category/playlist: {category_folder.name}')
+        for track in category_folder.iterdir():
             if not track.is_file() or track.name == 'cover.jpg' or track.suffix.lower() not in {'.mp3', '.wav', '.ogg'}:
                 continue
             
             new_name = to_kebab_case(track.name)
             if new_name != track.name:
                 new_path = track.with_name(new_name)
-                if new_path.exists():
+                # On Windows, new_path.exists() is true if track exists but with different case
+                if new_path.exists() and not track.samefile(new_path):
                     print(f'  Warning: {new_path} already exists, skipping {track.name}')
                 else:
                     print(f'  Renaming: {track.name} -> {new_name}')
                     track.rename(new_path)
 
 if __name__ == "__main__":
-    rename_music_files()
+    rename_audio_files('../static/assets/audio/music')
+    rename_audio_files('../static/assets/audio/ambience')
