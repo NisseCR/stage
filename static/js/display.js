@@ -2,7 +2,7 @@
  * Initialize the display page behavior.
  *
  * This page is a read-only listener that receives live updates from the backend
- * via SSE and renders the active scene and audio state.
+ * via SSE and renders the active scene state.
  */
 async function initDisplayPage() {
   const eventSource = new EventSource("/events");
@@ -20,27 +20,10 @@ async function initDisplayPage() {
   const sceneBackground = document.getElementById("scene-background");
   const sceneLayers = document.getElementById("scene-layers");
   const sceneFadeOverlay = document.getElementById("scene-fade-overlay");
-  const audioUnlockOverlay = document.getElementById("audio-unlock-overlay");
 
   const sceneMap = new Map(
     library.scenes.map((scene) => [scene.id, scene])
   );
-
-  const musicPlaylistMap = new Map(
-    library.music_playlists.map((playlist) => [playlist.id, playlist])
-  );
-
-  const ambienceTrackMap = new Map();
-  library.ambience_folders.forEach((folder) => {
-    folder.tracks.forEach((track) => {
-      ambienceTrackMap.set(track.name, track.url);
-    });
-  });
-
-  const audioEngine = new window.AudioEngine();
-
-  let audioReady = false;
-  let pendingAudioState = null;
 
   let currentState = {
     current_scene: null,
@@ -316,104 +299,12 @@ async function initDisplayPage() {
     isTransitioning = false;
   }
 
-  /**
-   * Resolve the current audio state from the display state.
-   *
-   * Args:
-   *   state: The latest known application state.
-   *
-   * Returns:
-   *   A resolved audio lookup object.
-   */
-  function resolveAudioState(state) {
-    const musicPlaylistId = state.current_music_playlist?.playlist_id ?? null;
-    const musicPlaylist = musicPlaylistId ? musicPlaylistMap.get(musicPlaylistId) ?? null : null;
-
-    const ambienceTrackUrls = {};
-    Object.keys(state.active_ambiences ?? {}).forEach((ambienceId) => {
-      const trackUrl = ambienceTrackMap.get(ambienceId);
-      if (trackUrl) {
-        ambienceTrackUrls[ambienceId] = trackUrl;
-      }
-    });
-
-    return {
-      musicPlaylist,
-      ambienceTrackUrls,
-    };
-  }
-
-  /**
-   * Apply audio state from the current shared application state.
-   *
-   * Args:
-   *   state: The latest known application state.
-   */
-  async function updateAudioFromState(state) {
-    if (!audioReady) {
-      pendingAudioState = state;
-      return;
-    }
-
-    const resolvedAudio = resolveAudioState(state);
-    await audioEngine.syncFromState(state, resolvedAudio);
-  }
-
-  /**
-   * Unlock audio playback after the first user gesture.
-   */
-  async function unlockAudio() {
-    if (audioReady) {
-      return;
-    }
-
-    audioReady = true;
-
-    if (audioUnlockOverlay) {
-      audioUnlockOverlay.classList.add("is-hidden");
-    }
-
-    await audioEngine.init();
-    await audioEngine.ensureRunning();
-
-    if (pendingAudioState) {
-      const stateToApply = pendingAudioState;
-      pendingAudioState = null;
-      await updateAudioFromState(stateToApply);
-    } else {
-      await updateAudioFromState(currentState);
-    }
-  }
-
-  /**
-   * Register the first interaction that unlocks audio.
-   */
-  function bindAudioUnlock() {
-    const unlockOnce = async () => {
-      await unlockAudio();
-      window.removeEventListener("pointerdown", unlockOnce);
-      window.removeEventListener("keydown", unlockOnce);
-      window.removeEventListener("touchstart", unlockOnce);
-    };
-
-    window.addEventListener("pointerdown", unlockOnce, { once: true });
-    window.addEventListener("keydown", unlockOnce, { once: true });
-    window.addEventListener("touchstart", unlockOnce, { once: true });
-  }
-
-  bindAudioUnlock();
-
-  if (audioUnlockOverlay) {
-    audioUnlockOverlay.addEventListener("click", unlockAudio);
-  }
-
   eventSource.addEventListener("state_snapshot", async (event) => {
     const data = JSON.parse(event.data);
     console.log("Initial state snapshot received:", data);
     currentState = data;
     renderState(currentState);
     await switchScene(currentState.current_scene?.scene_id ?? null);
-    await updateAudioFromState(currentState);
   });
 
   eventSource.addEventListener("scene_changed", async (event) => {
@@ -423,7 +314,6 @@ async function initDisplayPage() {
       current_scene: data.scene,
     });
     await switchScene(data.scene?.scene_id ?? null);
-    await updateAudioFromState(currentState);
   });
 
   eventSource.addEventListener("music_changed", async (event) => {
@@ -432,7 +322,6 @@ async function initDisplayPage() {
     applyStatePatch({
       current_music_playlist: data.music_playlist,
     });
-    await updateAudioFromState(currentState);
   });
 
   eventSource.addEventListener("ambience_changed", async (event) => {
@@ -441,7 +330,6 @@ async function initDisplayPage() {
     applyStatePatch({
       active_ambiences: data.active_ambiences,
     });
-    await updateAudioFromState(currentState);
   });
 
   eventSource.addEventListener("fade_settings_changed", async (event) => {
@@ -450,7 +338,6 @@ async function initDisplayPage() {
     applyStatePatch({
       fade_settings: data.fade_settings,
     });
-    await updateAudioFromState(currentState);
   });
 
   eventSource.addEventListener("volume_changed", async (event) => {
@@ -460,7 +347,6 @@ async function initDisplayPage() {
       current_music_playlist: data.music_playlist ?? currentState.current_music_playlist,
       active_ambiences: data.active_ambiences ?? currentState.active_ambiences,
     });
-    await updateAudioFromState(currentState);
   });
 
   eventSource.onerror = () => {
