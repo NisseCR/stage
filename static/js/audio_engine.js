@@ -285,18 +285,22 @@ class AudioEngine {
   }
 
   /**
-   * Crossfade from the previous music source into the new one.
-   *
-   * Args:
-   *   previousState: The previous music source snapshot.
-   *   newGainNode: The new gain node.
-   *   targetVolume: The target volume for the new track.
-   */
-  async crossfadeMusic(previousState, newGainNode, targetVolume) {
-    await this.fadeGainTo(newGainNode, targetVolume, this.fadeSettings.music);
-    await this.fadeOutSource(previousState.source, previousState.gainNode, this.fadeSettings.music);
-    this.disposeMusicSource(previousState.source, previousState.gainNode);
-  }
+     * Crossfade from the previous music source into the new one.
+     *
+     * Args:
+     *   previousState: The previous music source snapshot.
+     *   newGainNode: The new gain node.
+     *   targetVolume: The target volume for the new track.
+     */
+    async crossfadeMusic(previousState, newGainNode, targetVolume) {
+      const totalFadeSeconds = Math.max(0.01, Number(this.fadeSettings.music ?? 0));
+      const halfFadeSeconds = Math.max(0.01, totalFadeSeconds / 2);
+
+      await this.fadeOutSource(previousState.source, previousState.gainNode, halfFadeSeconds);
+      this.disposeMusicSource(previousState.source, previousState.gainNode);
+
+      await this.fadeGainTo(newGainNode, targetVolume, halfFadeSeconds);
+    }
 
   /**
    * Fade out and stop the current music source.
