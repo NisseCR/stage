@@ -691,11 +691,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-height: 0;
 }
 
 .preview-container {
   width: 100%;
   aspect-ratio: 16 / 9;
+  max-height: 100%;
   background: #000;
   position: relative;
   border-radius: 0.25rem;
@@ -743,12 +745,14 @@ body {
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .layer-drag-handle {
   cursor: grab;
   opacity: 0.3;
   font-size: 1.2rem;
+  user-select: none;
 }
 
 .layer-thumbnail {
@@ -764,7 +768,7 @@ body {
 }
 
 .layer-info {
-  flex: 1;
+  flex: 1 1 200px;
   min-width: 0;
 }
 
@@ -786,11 +790,13 @@ body {
 .layer-actions {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .layer-controls {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1rem;
   padding-top: 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
@@ -800,12 +806,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .control-label-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .control-label {
@@ -813,20 +822,27 @@ body {
   text-transform: uppercase;
   opacity: 0.4;
   letter-spacing: 0.1em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .control-inputs {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .control-inputs input[type="range"] {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
 }
 
 .control-inputs input[type="number"] {
-  width: 50px;
+  width: 56px;
+  flex: 0 0 auto;
   background: rgba(0,0,0,0.3);
   border: 1px solid rgba(255,255,255,0.1);
   color: #fff;
@@ -856,6 +872,22 @@ body {
   padding: 0.75rem;
   border-radius: 0.25rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  min-width: 0;
+}
+
+.bg-picker-row .layer-info {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.bg-picker-row .layer-filename {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bg-picker-row .btn-secondary {
+  flex-shrink: 0;
 }
 
 .btn-secondary {
@@ -1052,4 +1084,22 @@ body {
   .gm-control-group {
     grid-template-columns: 1fr 1fr;
   }
+}
+.preview-empty {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.4);
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  pointer-events: none;
+}
+
+.preview-empty.is-hidden {
+  display: none;
 }

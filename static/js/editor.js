@@ -24,6 +24,7 @@ class SceneEditor {
     this.isDirty = false;
     this.layers = [];
     this.availableAssets = { image: [], video: [] };
+    this.lastBroadcastScene = null;
 
     if (window.EDIT_MODE) {
       this.initEditor();
@@ -61,6 +62,16 @@ class SceneEditor {
     // Initialize SceneEngine for preview
     this.sceneEngine = new SceneEngine({
       container: document.getElementById("preview-stage")
+    });
+
+    this.previewChannel = new BroadcastChannel("paracosm-editor-preview");
+    this.previewChannel.addEventListener("message", (event) => {
+      if (event.data?.type === "request-state" && this.lastBroadcastScene) {
+        this.previewChannel.postMessage({
+          type: "scene",
+          scene: this.lastBroadcastScene,
+        });
+      }
     });
 
     // Fetch available assets to check for missing files
@@ -297,16 +308,9 @@ class SceneEditor {
     }
 
     if (this.popOutBtn) {
-      if (window.SCENE_ID === "new") {
-        this.popOutBtn.disabled = true;
-        this.popOutBtn.title = "Save the scene first to pop out the preview";
-        this.popOutBtn.style.opacity = "0.5";
-        this.popOutBtn.style.cursor = "not-allowed";
-      } else {
-        this.popOutBtn.addEventListener("click", () => {
-          window.open(`/editor/${window.SCENE_ID}/preview`, "_blank", "width=1280,height=720");
-        });
-      }
+      this.popOutBtn.addEventListener("click", () => {
+        window.open("/editor/preview", "_blank", "width=1280,height=720");
+      });
     }
 
     window.addEventListener("keydown", (e) => {
@@ -317,6 +321,9 @@ class SceneEditor {
     });
 
     window.addEventListener("beforeunload", (e) => {
+      if (this.previewChannel) {
+        this.previewChannel.close();
+      }
       if (this.isDirty) {
         e.preventDefault();
         e.returnValue = "";
@@ -376,6 +383,14 @@ class SceneEditor {
     
     // The engine doesn't natively support "missing" placeholders, we'll handle it by checking assets
     this.sceneEngine.renderScene(previewScene);
+
+    this.lastBroadcastScene = previewScene;
+    if (this.previewChannel) {
+      this.previewChannel.postMessage({
+        type: "scene",
+        scene: previewScene
+      });
+    }
 
     // If BG missing, show placeholder
     const container = document.getElementById("preview-stage");

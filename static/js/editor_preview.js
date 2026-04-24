@@ -2,31 +2,25 @@
  * Dedicated preview script for the pop-out preview window.
  */
 async function initPreview() {
-  const sceneId = window.PREVIEW_SCENE_ID;
   const container = document.getElementById("scene-stage");
+  const emptyState = document.getElementById("preview-empty");
+  const engine = new SceneEngine({ container });
 
-  if (!sceneId) {
-    container.innerHTML = '<div style="display: flex; height: 100%; align-items: center; justify-content: center;">No scene ID provided</div>';
-    return;
-  }
+  const channel = new BroadcastChannel("paracosm-editor-preview");
 
-  try {
-    const response = await fetch(`/api/scenes/${sceneId}`);
-    if (response.status === 404) {
-      container.innerHTML = '<div style="display: flex; height: 100%; align-items: center; justify-content: center;">Scene not found</div>';
-      return;
+  channel.addEventListener("message", (event) => {
+    if (event.data?.type === "scene") {
+      engine.renderScene(event.data.scene);
+      if (emptyState) {
+        emptyState.classList.add("is-hidden");
+      }
     }
-    const scene = await response.json();
+  });
 
-    const engine = new SceneEngine({
-      container: container
-    });
+  // Ask the editor to send the current state right away.
+  channel.postMessage({ type: "request-state" });
 
-    engine.renderScene(scene);
-  } catch (error) {
-    console.error("Failed to load preview scene:", error);
-    container.innerHTML = '<div style="display: flex; height: 100%; align-items: center; justify-content: center;">Failed to load preview</div>';
-  }
+  window.addEventListener("beforeunload", () => channel.close());
 }
 
 document.addEventListener("DOMContentLoaded", initPreview);

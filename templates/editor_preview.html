@@ -9,13 +9,11 @@
          alt="Scene background">
     <div id="scene-layers" class="scene-layers"></div>
   </div>
+  <div id="preview-empty" class="preview-empty">Waiting for editor…</div>
 </main>
 {% endblock %}
 
 {% block scripts %}
-<script>
-  window.PREVIEW_SCENE_ID = "{{ scene_id }}";
-</script>
 <script src="/static/js/scene_engine.js"></script>
 <script src="/static/js/editor_preview.js"></script>
 {% endblock %}

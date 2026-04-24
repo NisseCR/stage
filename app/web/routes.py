@@ -107,15 +107,27 @@ async def editor_edit_page(request: Request, scene_id: str) -> HTMLResponse:
     )
 
 
+@router.get("/editor/preview", response_class=HTMLResponse)
+async def editor_preview_live_page(request: Request):
+    """
+    Render a live preview page for the scene editor (BroadcastChannel based).
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="editor_preview.html",
+        context={},
+    )
+
+
 @router.get("/editor/{scene_id}/preview", response_class=HTMLResponse)
-async def editor_preview_page(request: Request, scene_id: str) -> HTMLResponse:
+async def editor_preview_page(request: Request, scene_id: str):
     """
     Render a dedicated preview page for a scene.
     """
     return templates.TemplateResponse(
         request=request,
         name="editor_preview.html",
-        context={"scene_id": scene_id},
+        context={},
     )
 
 
