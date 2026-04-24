@@ -38,6 +38,7 @@ function createUiBindings() {
     fadeMusic: document.getElementById("fade-music"),
     fadeAmbience: document.getElementById("fade-ambience"),
     fadeScene: document.getElementById("fade-scene"),
+    showDebug: document.getElementById("show-debug"),
     syncButton: document.getElementById("sync-state"),
     tabButtons: document.querySelectorAll(".tab-button"),
     tabPanels: document.querySelectorAll(".gm-tab-panel"),
@@ -58,6 +59,7 @@ function createDraftState(state) {
     scene: state.scene ?? null,
     music: state.music ?? null,
     ambiences: structuredClone(state.ambiences ?? {}),
+    show_debug: state.show_debug ?? true,
     fade_settings: {
       music: state.fade_settings?.music ?? 5.0,
       ambience: state.fade_settings?.ambience ?? 10.0,
@@ -80,6 +82,7 @@ function createSyncPayload(draftState) {
     scene: draftState.scene,
     music: draftState.music,
     ambiences: draftState.ambiences,
+    show_debug: draftState.show_debug,
     fade_settings: draftState.fade_settings,
   };
 }
@@ -300,6 +303,10 @@ function renderFadeControls(ui, draftState) {
   if (ui.fadeScene) {
     ui.fadeScene.value = draftState.fade_settings.scene;
   }
+
+  if (ui.showDebug) {
+    ui.showDebug.checked = draftState.show_debug;
+  }
 }
 
 /**
@@ -325,6 +332,12 @@ function bindFadeControls(ui, draftState) {
   if (ui.fadeScene) {
     ui.fadeScene.addEventListener("change", () => {
       draftState.fade_settings.scene = Number(ui.fadeScene.value);
+    });
+  }
+
+  if (ui.showDebug) {
+    ui.showDebug.addEventListener("change", () => {
+      draftState.show_debug = ui.showDebug.checked;
     });
   }
 }
@@ -354,6 +367,7 @@ function bindSyncButton(button, ui, library, draftState) {
       draftState.scene = updatedState.scene ?? null;
       draftState.music = updatedState.music ?? null;
       draftState.ambiences = structuredClone(updatedState.ambiences ?? {});
+      draftState.show_debug = updatedState.show_debug ?? true;
       draftState.fade_settings = {
         music: updatedState.fade_settings?.music ?? 5.0,
         ambience: updatedState.fade_settings?.ambience ?? 10.0,

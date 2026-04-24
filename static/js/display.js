@@ -48,6 +48,31 @@ async function initDisplayPage() {
     ambienceTrackMap,
   });
 
+  const displayPage = document.querySelector(".display-page");
+  const joinOverlay = document.getElementById("join-overlay");
+  const joinButton = document.getElementById("join-button");
+  const debugPanel = document.querySelector(".display-debug");
+
+  let isJoined = false;
+  let lastState = null;
+
+  // Add blur on load
+  displayPage.classList.add("is-blurred");
+
+  joinButton.addEventListener("click", async () => {
+    isJoined = true;
+    displayPage.classList.remove("is-blurred");
+    joinOverlay.classList.add("is-hidden");
+
+    // Initialize audio context within user gesture
+    await audioEngine.init();
+
+    // Reconcile with last received state if any
+    if (lastState) {
+      await audioEngine.reconcile(lastState);
+    }
+  });
+
   /**
    * Render the current shared state into the debug panel.
    *
@@ -75,11 +100,21 @@ async function initDisplayPage() {
    *   state: The latest state from the backend.
    */
   async function applyState(state) {
+    lastState = state;
     renderDebugState(state);
+
+    if (debugPanel) {
+      debugPanel.classList.toggle("is-hidden", !state.show_debug);
+    }
+
     sceneEngine.updateFadeSettings(state.fade_settings);
 
     const scenePromise = sceneEngine.reconcile(state.scene?.scene_id ?? null);
-    const audioPromise = audioEngine.reconcile(state);
+    
+    let audioPromise = Promise.resolve();
+    if (isJoined) {
+      audioPromise = audioEngine.reconcile(state);
+    }
 
     await Promise.all([scenePromise, audioPromise]);
   }

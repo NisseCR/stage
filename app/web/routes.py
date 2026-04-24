@@ -131,6 +131,7 @@ async def sync_state(request: Request, body: AppStateSyncRequest) -> AppStateRes
         scene=body.scene,
         music=body.music,
         ambiences=body.ambiences,
+        show_debug=body.show_debug,
         fade_settings=body.fade_settings.model_dump(),
     )
 

@@ -71,6 +71,48 @@ body {
   opacity: 1;
 }
 
+.display-page.is-blurred #scene-stage {
+  filter: blur(20px) brightness(0.6);
+}
+
+.join-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: opacity 1s ease, visibility 1s;
+}
+
+.join-overlay.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.join-button {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 2rem;
+  font-family: Inter, sans-serif;
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5em;
+  cursor: pointer;
+  transition: all 0.8s ease;
+  text-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.join-button:hover {
+  color: #fff;
+  letter-spacing: 0.6em;
+  text-shadow: 0 0 30px rgba(255, 255, 255, 0.4);
+}
+
 .display-debug {
   position: absolute;
   left: 1rem;
@@ -84,6 +126,10 @@ body {
   font-family: monospace;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(6px);
+}
+
+.display-debug.is-hidden {
+  display: none;
 }
 
 .page {
@@ -390,6 +436,25 @@ body {
 
 .setting-item input:focus {
   border-bottom-color: rgba(255, 255, 255, 0.6);
+}
+
+.toggle-item {
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+}
+
+.toggle-item label {
+  cursor: pointer;
+  margin: 0;
+}
+
+.toggle-item input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
+  height: 1.2rem;
+  width: 1.2rem;
+  margin: 0;
 }
 
 @media (max-width: 600px) {

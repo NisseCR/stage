@@ -49,6 +49,7 @@ class AppStateSyncRequest(BaseModel):
     scene: ActiveScene | None = None
     music: ActivePlaylist | None = None
     ambiences: dict[str, ActiveAmbience] = Field(default_factory=dict)
+    show_debug: bool = True
     fade_settings: FadeSettings = Field(default_factory=FadeSettings)
 
 
@@ -60,4 +61,5 @@ class StateResponse(BaseModel):
     scene: ActiveScene | None = None
     music: ActivePlaylist | None = None
     ambiences: dict[str, ActiveAmbience] = Field(default_factory=dict)
+    show_debug: bool = True
     fade_settings: dict[str, Any] = Field(default_factory=dict)
