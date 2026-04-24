@@ -1,0 +1,6 @@
+{
+  "id": "ship",
+  "name": "Ship",
+  "background": "deck.jpg",
+  "layers": ["wind.webm"]
+}

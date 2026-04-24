@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     scene_service: SceneService = SceneService(
         settings.images_dir,
         settings.video_dir,
-        settings.scenes_file,
+        settings.scenes_dir,
     )
 
     app.state.app_state = AppState()

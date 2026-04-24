@@ -13,10 +13,8 @@ class Settings:
         self.assets_dir = self.static_dir / "assets"
         self.audio_dir = self.assets_dir / "audio"
         self.images_dir = self.assets_dir / "images"
-        self.scenes_dir = self.assets_dir / "scenes"
+        self.scenes_dir = self.base_dir / "data" / "scenes"
         self.video_dir = self.assets_dir / "video"
-
-        self.scenes_file = self.scenes_dir / "scenes.json"
 
 
 settings = Settings()

@@ -15,30 +15,30 @@ class SceneService:
     IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
     VIDEO_EXTENSIONS = {".webm", ".mp4", ".mkv", ".mov", ".avi"}
 
-    def __init__(self, images_dir: Path, video_dir: Path, scenes_file: Path) -> None:
+    def __init__(self, images_dir: Path, video_dir: Path, scenes_dir: Path) -> None:
         self.images_dir = images_dir
         self.video_dir = video_dir
-        self.scenes_file = scenes_file
+        self.scenes_dir = scenes_dir
 
     def load_scenes(self) -> list[SceneDefinition]:
         """
-        Load scene definitions from the configured JSON file.
+        Load scene definitions from the configured scenes directory.
 
         Scene asset paths are kept relative so scene files stay easy to write.
 
         Returns:
             A list of scene definitions, or an empty list if nothing is available.
         """
-        if not self.scenes_file.exists():
+        if not self.scenes_dir.exists():
             return []
 
         import json
 
-        with self.scenes_file.open("r", encoding="utf-8") as file:
-            raw_scenes: list[dict[str, Any]] = json.load(file)
-
         scenes: list[SceneDefinition] = []
-        for scene in raw_scenes:
+        for scene_file in self.scenes_dir.glob("*.json"):
+            with scene_file.open("r", encoding="utf-8") as file:
+                scene = json.load(file)
+
             scenes.append(
                 SceneDefinition(
                     id=scene["id"],
@@ -75,9 +75,10 @@ class SceneService:
             type=resolved_type,
             opacity=layer.get("opacity", 1.0),
             brightness=layer.get("brightness", 1.0),
+            grayscale=layer.get("grayscale", 0.0),
+            blur=layer.get("blur", 0.0),
+            flip=layer.get("flip", False),
             blend_mode=layer.get("blend_mode", "normal"),
-            transform=layer.get("transform"),
-            filter=layer.get("filter"),
         )
 
     def _infer_layer_type(self, asset_name: str) -> str:

@@ -129,9 +129,26 @@ class SceneEngine {
    */
   applyLayerStyles(element, layer) {
     element.style.opacity = String(layer.opacity ?? 1.0);
-    element.style.filter = `brightness(${layer.brightness ?? 1.0})${layer.filter ? ` ${layer.filter}` : ""}`;
+
+    const filters = [];
+    if (layer.brightness !== undefined && layer.brightness !== 1.0) {
+      filters.push(`brightness(${layer.brightness})`);
+    }
+    if (layer.grayscale !== undefined && layer.grayscale > 0) {
+      filters.push(`grayscale(${layer.grayscale})`);
+    }
+    if (layer.blur !== undefined && layer.blur > 0) {
+      filters.push(`blur(${layer.blur}px)`);
+    }
+    element.style.filter = filters.length > 0 ? filters.join(" ") : "none";
+
     element.style.mixBlendMode = layer.blend_mode ?? "normal";
-    element.style.transform = layer.transform ?? "none";
+
+    const transforms = [];
+    if (layer.flip) {
+      transforms.push("scaleX(-1)");
+    }
+    element.style.transform = transforms.length > 0 ? transforms.join(" ") : "none";
   }
 
   /**

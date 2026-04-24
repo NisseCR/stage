@@ -1,0 +1,6 @@
+{
+  "id": "netheril",
+  "name": "Netheril",
+  "background": "lower-netheril.jpg",
+  "layers": ["wind.webm"]
+}

@@ -6,16 +6,17 @@ class SceneLayer(BaseModel):
     Represent a single visual layer in a scene definition.
 
     Layers may be images or videos, and each layer can define optional visual
-    adjustments such as opacity, brightness, blend mode, transform, and filter.
+    adjustments such as opacity, brightness, grayscale, blur, flip, and blend mode.
     """
 
     src: str
     type: str | None = None
     opacity: float = 1.0
     brightness: float = 1.0
+    grayscale: float = 0.0
+    blur: float = 0.0
+    flip: bool = False
     blend_mode: str = "normal"
-    transform: str | None = None
-    filter: str | None = None
 
 
 class SceneDefinition(BaseModel):

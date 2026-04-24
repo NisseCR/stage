@@ -1,0 +1,20 @@
+{
+  "id": "gate",
+  "name": "Gate",
+  "background": "gate.jpg",
+  "layers": [
+    {
+      "src": "wind.webm",
+      "type": "video",
+      "opacity": 0.4,
+      "blend_mode": "screen",
+      "flip": true
+    },
+    {
+      "src": "mountain.webm",
+      "type": "video",
+      "brightness": 0.25,
+      "blur": 2
+    }
+  ]
+}
