@@ -6,6 +6,7 @@
  * - music playlists auto-advance track-to-track
  * - state changes reload/unload audio when needed
  * - unchanged playlists keep their current playback position
+ * - failed tracks are skipped once per playlist cycle
  */
 class AudioEngine {
   /**
@@ -30,6 +31,8 @@ class AudioEngine {
       playlist: null,
       trackIndex: 0,
       audioElement: null,
+      playbackToken: 0,
+      failedTrackIndexes: new Set(),
     };
 
     this.activeAmbienceSources = new Map();
@@ -92,6 +95,7 @@ class AudioEngine {
     const playlist = this.musicPlaylistMap.get(playlistId) ?? null;
 
     if (!playlist || !playlist.tracks || playlist.tracks.length === 0) {
+      console.warn("Music playlist has no tracks or was not found:", playlistId);
       this.stopMusic();
       return;
     }
@@ -103,6 +107,7 @@ class AudioEngine {
       this.musicState.playlistId = playlistId;
       this.musicState.playlist = playlist;
       this.musicState.trackIndex = 0;
+      this.musicState.failedTrackIndexes = new Set();
       await this.playCurrentMusicTrack();
       return;
     }
@@ -110,6 +115,21 @@ class AudioEngine {
     if (!this.musicState.audioElement) {
       await this.playCurrentMusicTrack();
     }
+  }
+
+  /**
+   * Get the current track from the active playlist.
+   *
+   * Returns:
+   *   The current track, or null if unavailable.
+   */
+  getCurrentMusicTrack() {
+    const playlist = this.musicState.playlist;
+    if (!playlist || !playlist.tracks || playlist.tracks.length === 0) {
+      return null;
+    }
+
+    return playlist.tracks[this.musicState.trackIndex % playlist.tracks.length] ?? null;
   }
 
   /**
@@ -121,8 +141,21 @@ class AudioEngine {
       return;
     }
 
-    const track = playlist.tracks[this.musicState.trackIndex % playlist.tracks.length];
+    const token = ++this.musicState.playbackToken;
+
+    const track = this.getCurrentMusicTrack();
     if (!track) {
+      return;
+    }
+
+    if (!track.url) {
+      console.warn("Music track has no URL:", track);
+      await this.handleMusicTrackFailure();
+      return;
+    }
+
+    if (this.musicState.failedTrackIndexes.has(this.musicState.trackIndex)) {
+      await this.handleMusicTrackFailure();
       return;
     }
 
@@ -131,22 +164,65 @@ class AudioEngine {
     audio.crossOrigin = "anonymous";
 
     audio.addEventListener("ended", async () => {
+      if (token !== this.musicState.playbackToken) {
+        return;
+      }
+
       await this.advanceMusicTrack();
     });
 
-    audio.addEventListener("error", () => {
+    audio.addEventListener("error", async () => {
+      if (token !== this.musicState.playbackToken) {
+        return;
+      }
+
       console.warn("Music track failed to load:", track.url);
-      this.advanceMusicTrack();
+      await this.handleMusicTrackFailure();
     });
 
     this.musicState.audioElement = audio;
 
     try {
       await audio.play();
+
+      if (token !== this.musicState.playbackToken) {
+        audio.pause();
+        return;
+      }
+
       console.log("Playing music track:", track.name);
     } catch (error) {
-      console.warn("Failed to play music track:", error);
+      if (token !== this.musicState.playbackToken) {
+        return;
+      }
+
+      console.warn("Failed to play music track:", track.url, error);
+      await this.handleMusicTrackFailure();
     }
+  }
+
+  /**
+   * Handle a failed music track by moving to the next track once.
+   */
+  async handleMusicTrackFailure() {
+    const playlist = this.musicState.playlist;
+    if (!playlist || !playlist.tracks || playlist.tracks.length === 0) {
+      this.stopMusic();
+      return;
+    }
+
+    this.musicState.failedTrackIndexes.add(this.musicState.trackIndex);
+
+    const totalTracks = playlist.tracks.length;
+    const triedCount = this.musicState.failedTrackIndexes.size;
+
+    if (triedCount >= totalTracks) {
+      console.warn("All tracks in playlist failed to load:", this.musicState.playlistId);
+      this.stopMusic();
+      return;
+    }
+
+    await this.advanceMusicTrack();
   }
 
   /**
@@ -165,9 +241,22 @@ class AudioEngine {
       return;
     }
 
-    this.musicState.trackIndex = (this.musicState.trackIndex + 1) % playlist.tracks.length;
-    this.cleanupMusicElement();
-    await this.playCurrentMusicTrack();
+    const totalTracks = playlist.tracks.length;
+    let nextIndex = this.musicState.trackIndex;
+
+    for (let i = 0; i < totalTracks; i += 1) {
+      nextIndex = (nextIndex + 1) % totalTracks;
+
+      if (!this.musicState.failedTrackIndexes.has(nextIndex)) {
+        this.musicState.trackIndex = nextIndex;
+        this.cleanupMusicElement();
+        await this.playCurrentMusicTrack();
+        return;
+      }
+    }
+
+    console.warn("No playable tracks remain in playlist:", this.musicState.playlistId);
+    this.stopMusic();
   }
 
   /**
@@ -178,6 +267,8 @@ class AudioEngine {
     this.musicState.playlistId = null;
     this.musicState.playlist = null;
     this.musicState.trackIndex = 0;
+    this.musicState.failedTrackIndexes = new Set();
+    this.musicState.playbackToken += 1;
   }
 
   /**
