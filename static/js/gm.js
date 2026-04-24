@@ -177,8 +177,24 @@ function renderSceneList(container, library, draftState, ui) {
   library.scenes.forEach((scene) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = scene.name;
+    button.className = "gm-tile-button";
     button.classList.toggle("active", draftState.scene?.scene_id === scene.id);
+
+    const img = document.createElement("img");
+    img.src = scene.background;
+    img.className = "tile-art";
+    img.loading = "lazy";
+    button.appendChild(img);
+
+    const overlay = document.createElement("div");
+    overlay.className = "tile-overlay";
+    
+    const label = document.createElement("span");
+    label.className = "tile-label";
+    label.textContent = scene.name;
+    
+    overlay.appendChild(label);
+    button.appendChild(overlay);
 
     button.addEventListener("click", () => {
       draftState.scene = {
@@ -212,8 +228,26 @@ function renderMusicList(container, library, draftState, ui) {
   library.music_playlists.forEach((playlist) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = playlist.name;
+    button.className = "gm-tile-button";
     button.classList.toggle("active", draftState.music?.playlist_id === playlist.id);
+
+    if (playlist.cover_url) {
+      const img = document.createElement("img");
+      img.src = playlist.cover_url;
+      img.className = "tile-art";
+      img.loading = "lazy";
+      button.appendChild(img);
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "tile-overlay";
+    
+    const label = document.createElement("span");
+    label.className = "tile-label";
+    label.textContent = playlist.name;
+    
+    overlay.appendChild(label);
+    button.appendChild(overlay);
 
     button.addEventListener("click", () => {
       draftState.music = {
@@ -252,7 +286,7 @@ function renderAmbienceList(container, library, draftState, ui) {
     folderSection.appendChild(folderTitle);
 
     const tracksGrid = document.createElement("div");
-    tracksGrid.className = "gm-control-group";
+    tracksGrid.className = "gm-control-group is-buttons";
     folderSection.appendChild(tracksGrid);
 
     folder.tracks.forEach((track) => {

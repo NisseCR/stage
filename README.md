@@ -1,6 +1,6 @@
-# Immersion
+# Paracosm
 
-Immersion is a local web application for running a D&D table with immersive visuals and audio.
+Paracosm is a local web application for running a D&D table with immersive visuals and audio.
 
 It is designed around two browser views:
 

@@ -367,11 +367,11 @@ body {
 
 .gm-control-group {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1.5rem;
 }
 
-.gm-control-group button {
+.gm-control-group.is-buttons button {
   appearance: none;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -385,17 +385,78 @@ body {
   transition: all 0.3s ease;
 }
 
-.gm-control-group button:hover {
+.gm-control-group.is-buttons button:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.2);
   color: #fff;
 }
 
-.gm-control-group button.active {
+.gm-control-group.is-buttons button.active {
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.5);
   color: #fff;
   box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+}
+
+.gm-tile-button {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  transition: all 0.3s ease;
+  position: relative;
+  aspect-ratio: 1;
+}
+
+.gm-tile-button .tile-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+  background-color: #1a1d23;
+}
+
+.gm-tile-button .tile-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0) 100%);
+  display: flex;
+  align-items: flex-end;
+  padding: 1rem;
+}
+
+.gm-tile-button .tile-label {
+  color: #fff;
+  font-family: "EB Garamond", serif;
+  font-size: 1rem;
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  line-height: 1.2;
+}
+
+.gm-tile-button:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+}
+
+.gm-tile-button:hover .tile-art {
+  transform: scale(1.05);
+}
+
+.gm-tile-button.active {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+.gm-tile-button.active .tile-overlay {
+  background: linear-gradient(to top, rgba(255,255,255,0.2) 0%, rgba(0,0,0,0) 100%);
 }
 
 .gm-ambience-container {
