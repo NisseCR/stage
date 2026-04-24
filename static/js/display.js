@@ -77,8 +77,11 @@ async function initDisplayPage() {
   async function applyState(state) {
     renderDebugState(state);
     sceneEngine.updateFadeSettings(state.fade_settings);
-    await sceneEngine.reconcile(state.scene?.scene_id ?? null);
-    await audioEngine.reconcile(state);
+
+    const scenePromise = sceneEngine.reconcile(state.scene?.scene_id ?? null);
+    const audioPromise = audioEngine.reconcile(state);
+
+    await Promise.all([scenePromise, audioPromise]);
   }
 
   eventSource.addEventListener("state_snapshot", async (event) => {
