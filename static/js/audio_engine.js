@@ -1,12 +1,13 @@
 /**
  * AudioEngine reconciles desired audio state against currently playing audio.
  *
- * Prototype behavior:
- * - no fades yet
- * - music playlists auto-advance track-to-track
- * - state changes reload/unload audio when needed
- * - unchanged playlists keep their current playback position
- * - failed tracks are skipped once per playlist cycle
+ * Web Audio implementation goals:
+ * - use AudioBufferSourceNode for playback
+ * - fade individual music tracks and ambience items
+ * - preserve unchanged items
+ * - crossfade music only when the playlist changes
+ * - auto-advance music tracks without fades
+ * - latest update wins gracefully by waiting for the current transition to finish
  */
 class AudioEngine {
   /**
@@ -20,6 +21,7 @@ class AudioEngine {
     this.ambienceTrackMap = options.ambienceTrackMap;
 
     this.audioContext = null;
+    this.masterGain = null;
 
     this.currentDesiredState = {
       music: null,
@@ -30,20 +32,27 @@ class AudioEngine {
       playlistId: null,
       playlist: null,
       trackIndex: 0,
-      audioElement: null,
-      playbackToken: 0,
+      source: null,
+      gainNode: null,
+      currentTrackUrl: null,
       failedTrackIndexes: new Set(),
+      transitionPromise: Promise.resolve(),
     };
 
     this.activeAmbienceSources = new Map();
+    this.bufferCache = new Map();
+    this.pendingLoadPromises = new Map();
   }
 
   /**
-   * Initialize the audio context.
+   * Initialize the audio context and master gain chain.
    */
   async init() {
     if (!this.audioContext) {
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      this.masterGain = this.audioContext.createGain();
+      this.masterGain.gain.value = 1.0;
+      this.masterGain.connect(this.audioContext.destination);
     }
 
     if (this.audioContext.state === "suspended") {
@@ -72,7 +81,10 @@ class AudioEngine {
     };
 
     if (musicChanged) {
-      await this.reconcileMusic(desiredMusicPlaylistId);
+      this.musicState.transitionPromise = this.musicState.transitionPromise.then(() =>
+        this.reconcileMusic(desiredMusicPlaylistId)
+      );
+      await this.musicState.transitionPromise;
     }
 
     if (ambienceChanged) {
@@ -88,7 +100,7 @@ class AudioEngine {
    */
   async reconcileMusic(playlistId) {
     if (!playlistId) {
-      this.stopMusic();
+      await this.fadeOutAndStopMusic();
       return;
     }
 
@@ -96,25 +108,52 @@ class AudioEngine {
 
     if (!playlist || !playlist.tracks || playlist.tracks.length === 0) {
       console.warn("Music playlist has no tracks or was not found:", playlistId);
-      this.stopMusic();
+      await this.fadeOutAndStopMusic();
       return;
     }
 
-    const playlistStillPlaying = this.musicState.playlistId === playlistId;
+    const playlistChanged = this.musicState.playlistId !== playlistId;
 
-    if (!playlistStillPlaying) {
-      this.stopMusic();
-      this.musicState.playlistId = playlistId;
-      this.musicState.playlist = playlist;
-      this.musicState.trackIndex = 0;
-      this.musicState.failedTrackIndexes = new Set();
-      await this.playCurrentMusicTrack();
+    if (playlistChanged) {
+      await this.switchMusicPlaylist(playlistId, playlist);
       return;
     }
 
-    if (!this.musicState.audioElement) {
-      await this.playCurrentMusicTrack();
+    if (!this.musicState.source) {
+      await this.playCurrentMusicTrack(false);
     }
+  }
+
+  /**
+   * Switch to a new music playlist with crossfade.
+   *
+   * Args:
+   *   playlistId: The desired playlist identifier.
+   *   playlist: The discovered playlist object.
+   */
+  async switchMusicPlaylist(playlistId, playlist) {
+    const previousState = this.snapshotCurrentMusicState();
+
+    this.musicState.playlistId = playlistId;
+    this.musicState.playlist = playlist;
+    this.musicState.trackIndex = 0;
+    this.musicState.failedTrackIndexes = new Set();
+
+    await this.playCurrentMusicTrack(true, previousState);
+  }
+
+  /**
+   * Snapshot the currently playing music state for crossfade purposes.
+   *
+   * Returns:
+   *   A snapshot of the previous music playback state.
+   */
+  snapshotCurrentMusicState() {
+    return {
+      source: this.musicState.source,
+      gainNode: this.musicState.gainNode,
+      currentTrackUrl: this.musicState.currentTrackUrl,
+    };
   }
 
   /**
@@ -134,14 +173,16 @@ class AudioEngine {
 
   /**
    * Start playback for the currently selected music track.
+   *
+   * Args:
+   *   shouldCrossfade: Whether to crossfade in from a previous source.
+   *   previousState: The prior music state for crossfade, if any.
    */
-  async playCurrentMusicTrack() {
+  async playCurrentMusicTrack(shouldCrossfade = false, previousState = null) {
     const playlist = this.musicState.playlist;
     if (!playlist || !playlist.tracks || playlist.tracks.length === 0) {
       return;
     }
-
-    const token = ++this.musicState.playbackToken;
 
     const track = this.getCurrentMusicTrack();
     if (!track) {
@@ -159,47 +200,87 @@ class AudioEngine {
       return;
     }
 
-    const audio = new Audio(track.url);
-    audio.preload = "auto";
-    audio.crossOrigin = "anonymous";
+    let buffer;
+    try {
+      buffer = await this.loadAudioBuffer(track.url);
+    } catch (error) {
+      console.warn("Music track failed to load:", track.url, error);
+      await this.handleMusicTrackFailure();
+      return;
+    }
 
-    audio.addEventListener("ended", async () => {
-      if (token !== this.musicState.playbackToken) {
+    const source = this.audioContext.createBufferSource();
+    const gainNode = this.audioContext.createGain();
+
+    source.buffer = buffer;
+    source.connect(gainNode);
+    gainNode.connect(this.masterGain);
+
+    const targetVolume = Number(track.volume ?? this.musicState.playlist?.volume ?? 1.0);
+    gainNode.gain.value = shouldCrossfade ? 0.0 : targetVolume;
+
+    source.addEventListener("ended", async () => {
+      if (this.musicState.source !== source) {
         return;
       }
 
       await this.advanceMusicTrack();
     });
 
-    audio.addEventListener("error", async () => {
-      const currentAudio = this.musicState.audioElement;
-      if (token !== this.musicState.playbackToken || currentAudio !== audio) {
-        return;
-      }
-
-      console.warn("Music track failed to load:", track.url);
-      await this.handleMusicTrackFailure();
-    });
-
-    this.musicState.audioElement = audio;
+    this.musicState.source = source;
+    this.musicState.gainNode = gainNode;
+    this.musicState.currentTrackUrl = track.url;
 
     try {
-      await audio.play();
-
-      if (token !== this.musicState.playbackToken) {
-        audio.pause();
-        return;
-      }
-
-      console.log("Playing music track:", track.name);
+      source.start(0);
     } catch (error) {
-      if (token !== this.musicState.playbackToken || this.musicState.audioElement !== audio) {
-        return;
-      }
-
-      console.warn("Failed to play music track:", track.url, error);
+      console.warn("Failed to start music track:", track.url, error);
       await this.handleMusicTrackFailure();
+      return;
     }
+
+    if (shouldCrossfade && previousState?.source && previousState?.gainNode) {
+      await this.crossfadeMusic(previousState, gainNode, targetVolume);
+    } else {
+      await this.fadeGainTo(gainNode, targetVolume, 0.01);
+    }
+
+    console.log("Playing music track:", track.name);
+  }
+
+  /**
+   * Crossfade from the previous music source into the new one.
+   *
+   * Args:
+   *   previousState: The previous music source snapshot.
+   *   newGainNode: The new gain node.
+   *   targetVolume: The target volume for the new track.
+   */
+  async crossfadeMusic(previousState, newGainNode, targetVolume) {
+    await this.fadeGainTo(newGainNode, targetVolume, 0.75);
+    await this.fadeOutSource(previousState.source, previousState.gainNode, 0.75);
+    this.disposeMusicSource(previousState.source, previousState.gainNode);
+  }
+
+  /**
+   * Fade out and stop the current music source.
+   */
+  async fadeOutAndStopMusic() {
+    const source = this.musicState.source;
+    const gainNode = this.musicState.gainNode;
+
+    if (source && gainNode) {
+      await this.fadeOutSource(source, gainNode, 0.25);
+      this.disposeMusicSource(source, gainNode);
+    }
+
+    this.musicState.playlistId = null;
+    this.musicState.playlist = null;
+    this.musicState.trackIndex = 0;
+    this.musicState.source = null;
+    this.musicState.gainNode = null;
+    this.musicState.currentTrackUrl = null;
+    this.musicState.failedTrackIndexes = new Set();
   }
 
   /**
@@ -208,7 +289,7 @@ class AudioEngine {
   async handleMusicTrackFailure() {
     const playlist = this.musicState.playlist;
     if (!playlist || !playlist.tracks || playlist.tracks.length === 0) {
-      this.stopMusic();
+      await this.fadeOutAndStopMusic();
       return;
     }
 
@@ -219,7 +300,7 @@ class AudioEngine {
 
     if (triedCount >= totalTracks) {
       console.warn("All tracks in playlist failed to load:", this.musicState.playlistId);
-      this.stopMusic();
+      await this.fadeOutAndStopMusic();
       return;
     }
 
@@ -230,6 +311,7 @@ class AudioEngine {
    * Advance to the next track in the current playlist.
    *
    * This is only used when the playlist itself has not changed.
+   * Auto-advance uses no fades.
    */
   async advanceMusicTrack() {
     const playlist = this.musicState.playlist;
@@ -250,41 +332,25 @@ class AudioEngine {
 
       if (!this.musicState.failedTrackIndexes.has(nextIndex)) {
         this.musicState.trackIndex = nextIndex;
-        this.cleanupMusicElement();
-        await this.playCurrentMusicTrack();
+
+        const previousSource = this.musicState.source;
+        const previousGainNode = this.musicState.gainNode;
+
+        this.musicState.source = null;
+        this.musicState.gainNode = null;
+        this.musicState.currentTrackUrl = null;
+
+        if (previousSource && previousGainNode) {
+          this.disposeMusicSource(previousSource, previousGainNode);
+        }
+
+        await this.playCurrentMusicTrack(false);
         return;
       }
     }
 
     console.warn("No playable tracks remain in playlist:", this.musicState.playlistId);
-    this.stopMusic();
-  }
-
-  /**
-   * Stop music playback and clear music state.
-   */
-  stopMusic() {
-    this.cleanupMusicElement();
-    this.musicState.playlistId = null;
-    this.musicState.playlist = null;
-    this.musicState.trackIndex = 0;
-    this.musicState.failedTrackIndexes = new Set();
-    this.musicState.playbackToken += 1;
-  }
-
-  /**
-   * Dispose of the active music element.
-   */
-  cleanupMusicElement() {
-    if (!this.musicState.audioElement) {
-      return;
-    }
-
-    const audio = this.musicState.audioElement;
-    audio.pause();
-    audio.src = "";
-    audio.load();
-    this.musicState.audioElement = null;
+    await this.fadeOutAndStopMusic();
   }
 
   /**
@@ -299,15 +365,21 @@ class AudioEngine {
 
     for (const ambienceId of activeIds) {
       if (!desiredIds.has(ambienceId)) {
-        this.stopAmbience(ambienceId);
+        await this.fadeOutAndStopAmbience(ambienceId);
       }
     }
 
     for (const [ambienceId, ambience] of Object.entries(desiredAmbiences)) {
-      const alreadyPlaying = this.activeAmbienceSources.has(ambienceId);
-      if (!alreadyPlaying) {
+      const activeEntry = this.activeAmbienceSources.get(ambienceId);
+
+      if (!activeEntry) {
         await this.startAmbience(ambienceId, ambience);
+        continue;
       }
+
+      const targetVolume = Number(ambience.volume ?? 1.0);
+      await this.fadeGainTo(activeEntry.gainNode, targetVolume, 0.75);
+      activeEntry.ambience = ambience;
     }
   }
 
@@ -325,34 +397,40 @@ class AudioEngine {
       return;
     }
 
+    let buffer;
+    try {
+      buffer = await this.loadAudioBuffer(trackUrl);
+    } catch (error) {
+      console.warn("Ambience track failed to load:", trackUrl, error);
+      return;
+    }
+
+    const source = this.audioContext.createBufferSource();
+    const gainNode = this.audioContext.createGain();
+
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(gainNode);
+    gainNode.connect(this.masterGain);
+
     const token = Symbol(ambienceId);
-    const audio = new Audio(trackUrl);
-    audio.preload = "auto";
-    audio.loop = true;
-    audio.crossOrigin = "anonymous";
+    const targetVolume = Number(ambience.volume ?? 1.0);
+    gainNode.gain.value = 0.0;
 
     this.activeAmbienceSources.set(ambienceId, {
-      audio,
+      source,
+      gainNode,
       ambience,
       token,
     });
 
-    audio.addEventListener("error", () => {
-      const currentEntry = this.activeAmbienceSources.get(ambienceId);
-      if (!currentEntry || currentEntry.token !== token) {
-        return;
-      }
-
-      console.warn("Ambience track failed to load:", trackUrl);
-      this.stopAmbience(ambienceId);
-    });
-
     try {
-      await audio.play();
+      source.start(0);
+      await this.fadeGainTo(gainNode, targetVolume, 0.75);
 
       const currentEntry = this.activeAmbienceSources.get(ambienceId);
       if (!currentEntry || currentEntry.token !== token) {
-        audio.pause();
+        source.stop();
         return;
       }
 
@@ -364,8 +442,24 @@ class AudioEngine {
       }
 
       console.warn("Failed to play ambience track:", error);
-      this.stopAmbience(ambienceId);
+      await this.stopAmbience(ambienceId);
     }
+  }
+
+  /**
+   * Fade out and stop a single ambience track.
+   *
+   * Args:
+   *   ambienceId: The ambience identifier.
+   */
+  async fadeOutAndStopAmbience(ambienceId) {
+    const entry = this.activeAmbienceSources.get(ambienceId);
+    if (!entry) {
+      return;
+    }
+
+    await this.fadeOutSource(entry.source, entry.gainNode, 0.75);
+    await this.stopAmbience(ambienceId);
   }
 
   /**
@@ -374,17 +468,150 @@ class AudioEngine {
    * Args:
    *   ambienceId: The ambience identifier.
    */
-  stopAmbience(ambienceId) {
+  async stopAmbience(ambienceId) {
     const entry = this.activeAmbienceSources.get(ambienceId);
     if (!entry) {
       return;
     }
 
     this.activeAmbienceSources.delete(ambienceId);
+    this.disposeSource(entry.source);
+  }
 
-    entry.audio.pause();
-    entry.audio.src = "";
-    entry.audio.load();
+  /**
+   * Dispose of a music source and gain node.
+   *
+   * Args:
+   *   source: The buffer source node.
+   *   gainNode: The gain node.
+   */
+  disposeMusicSource(source, gainNode) {
+    this.disposeSource(source);
+    if (gainNode) {
+      gainNode.disconnect();
+    }
+  }
+
+  /**
+   * Dispose of a generic source node.
+   *
+   * Args:
+   *   source: The buffer source node.
+   */
+  disposeSource(source) {
+    if (!source) {
+      return;
+    }
+
+    try {
+      source.stop();
+    } catch (error) {
+      // Source may already be stopped; ignore.
+    }
+
+    try {
+      source.disconnect();
+    } catch (error) {
+      // Ignore disconnect errors during cleanup.
+    }
+  }
+
+  /**
+   * Fade a gain node to a target value.
+   *
+   * Args:
+   *   gainNode: The gain node to animate.
+   *   targetVolume: The target gain value.
+   *   durationSeconds: Fade duration in seconds.
+   */
+  async fadeGainTo(gainNode, targetVolume, durationSeconds) {
+    if (!gainNode || !this.audioContext) {
+      return;
+    }
+
+    const now = this.audioContext.currentTime;
+    const duration = Math.max(0.01, Number(durationSeconds ?? 0));
+
+    gainNode.gain.cancelScheduledValues(now);
+    gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+    gainNode.gain.linearRampToValueAtTime(Number(targetVolume ?? 1.0), now + duration);
+
+    await this.delay(duration * 1000);
+  }
+
+  /**
+   * Fade out a source by reducing its gain to zero.
+   *
+   * Args:
+   *   source: The audio source node.
+   *   gainNode: The gain node.
+   *   durationSeconds: Fade duration in seconds.
+   */
+  async fadeOutSource(source, gainNode, durationSeconds) {
+    if (!gainNode || !this.audioContext) {
+      return;
+    }
+
+    const now = this.audioContext.currentTime;
+    const duration = Math.max(0.01, Number(durationSeconds ?? 0));
+
+    gainNode.gain.cancelScheduledValues(now);
+    gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+    gainNode.gain.linearRampToValueAtTime(0.0, now + duration);
+
+    await this.delay(duration * 1000);
+
+    this.disposeSource(source);
+  }
+
+  /**
+   * Load and cache an audio buffer.
+   *
+   * Args:
+   *   url: The audio file URL.
+   *
+   * Returns:
+   *   The decoded audio buffer.
+   */
+  async loadAudioBuffer(url) {
+    if (this.bufferCache.has(url)) {
+      return this.bufferCache.get(url);
+    }
+
+    if (this.pendingLoadPromises.has(url)) {
+      return this.pendingLoadPromises.get(url);
+    }
+
+    const loadPromise = this.decodeAudioBuffer(url);
+    this.pendingLoadPromises.set(url, loadPromise);
+
+    try {
+      const buffer = await loadPromise;
+      this.bufferCache.set(url, buffer);
+      return buffer;
+    } finally {
+      this.pendingLoadPromises.delete(url);
+    }
+  }
+
+  /**
+   * Fetch and decode an audio file into an AudioBuffer.
+   *
+   * Args:
+   *   url: The audio file URL.
+   *
+   * Returns:
+   *   The decoded audio buffer.
+   */
+  async decodeAudioBuffer(url) {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch audio file: ${url}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return this.audioContext.decodeAudioData(arrayBuffer);
   }
 
   /**
@@ -434,5 +661,15 @@ class AudioEngine {
     return Object.fromEntries(
       Object.entries(ambiences ?? {}).map(([key, value]) => [key, { ...value }])
     );
+  }
+
+  /**
+   * Delay execution for a number of milliseconds.
+   *
+   * Args:
+   *   milliseconds: Delay duration.
+   */
+  delay(milliseconds) {
+    return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
   }
 }

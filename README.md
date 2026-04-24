@@ -59,10 +59,13 @@ The application uses:
   Handles the GM control flow and sends the full state to the backend.
 
 - `static/js/display.js`  
-  Bootstraps the display page and forwards state to the scene engine.
+  Bootstraps the display page and forwards state to the scene engine and audio engine.
 
 - `static/js/scene_engine.js`  
   Reconciles the desired scene state and handles transitions.
+
+- `static/js/audio_engine.js`  
+  Reconciles music and ambience playback using the Web Audio API.
 
 ## Asset structure
 
@@ -87,6 +90,7 @@ This structure keeps the project organized and makes future asset management eas
 - Scene definitions are loaded from JSON
 - Music and ambience libraries are discovered from the filesystem
 - Static assets are served by FastAPI
+- Music and ambience playback use Web Audio reconciliation with fades
 
 ## Current state model
 
@@ -107,6 +111,7 @@ This structure is designed to support future visual and audio playback logic wit
 - GM control flow wired to backend state changes
 - basic rendering of current state in both pages
 - asset scanning for scenes and audio libraries
+- Web Audio playback with fade-based reconciliation
 
 ## Roadmap
 
@@ -126,11 +131,11 @@ Continue refining the visual rendering layer:
 - active scene transitions
 - live state summaries as needed
 
-### 3. Audio engine
-Implement playback logic for:
-- music playlists
-- ambience loops
-- fades and transitions
+### 3. Audio engine polish
+Refine playback behavior for:
+- music crossfades on playlist changes
+- ambience fades on add/remove changes
+- smoother handling of edge cases and retries
 
 ### 4. Visual polish
 Add styling and layout improvements once the control flow is stable.
@@ -160,17 +165,3 @@ This keeps the codebase maintainable and makes it easier to verify that each lay
 
 This project is intended for local use on a single machine, with the GM controlling the display page in real time.  
 The current architecture is intentionally simple so it can grow cleanly as more immersive features are added.
-
-## Audio sync and reconciliation
-
-The audio engine is designed to follow the shared application state, but Web Audio playback can occasionally drift from the latest UI/state changes if updates overlap, arrive out of order, or interrupt fades mid-transition.
-
-To keep playback reliable, the next step is to make audio behave like a **reconciler**:
-- treat the backend state as the source of truth
-- re-apply the full desired audio state on each update
-- stop any music or ambience that is no longer enabled
-- correct volumes and active tracks when they differ from state
-- ignore stale in-flight transitions when newer state has already arrived
-- periodically resync audio so it eventually converges even if a change was missed
-
-This should help prevent cases like ambience continuing to play after it has been disabled, and should make fades and playlist switches more resilient over time.
