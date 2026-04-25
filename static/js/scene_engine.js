@@ -19,6 +19,15 @@ class SceneEngine {
     this.isTransitioning = false;
     this.pendingSceneId = null;
     this.currentFadeDurationMs = 5000;
+
+    // Parallax intro configuration
+    this.parallaxIntroBackgroundScale = 1.05;
+    this.parallaxIntroFirstLayerScale = 1.10;
+    this.parallaxIntroLayerScaleStep = 0.05;
+    this.parallaxIntroMaxLayerScale = 1.30;
+
+    // Track active animations for cleanup
+    this.activeIntroAnimations = [];
   }
 
   /**
@@ -67,11 +76,21 @@ class SceneEngine {
    *   sceneId: The target scene identifier.
    */
   async runTransition(sceneId) {
+    this.cancelParallaxIntroAnimations();
     await this.fadeToBlack();
     const scene = sceneId ? this.sceneMap.get(sceneId) ?? null : null;
     await this.preloadScene(scene);
     this.renderScene(scene);
-    await this.fadeInFromBlack();
+
+    if (this.currentFadeDurationMs > 0) {
+      this.prepareParallaxIntro();
+      const introPromise = this.playParallaxIntro(this.currentFadeDurationMs);
+      const fadePromise = this.fadeInFromBlack();
+      await Promise.all([introPromise, fadePromise]);
+    } else {
+      this.finishParallaxIntro();
+      await this.fadeInFromBlack();
+    }
   }
 
   /**
@@ -257,6 +276,8 @@ class SceneEngine {
         video.loop = true;
         video.playsInline = true;
         video.setAttribute("aria-hidden", "true");
+        // Store base transform for parallax intro composition
+        video.dataset.baseTransform = layer.flip ? "scaleX(-1)" : "none";
         this.applyLayerStyles(video, layer);
         this.sceneLayers.appendChild(video);
         return;
@@ -266,8 +287,140 @@ class SceneEngine {
       image.className = "scene-layer-image";
       image.src = layer.src;
       image.alt = `${scene.name} layer`;
+      // Store base transform for parallax intro composition
+      image.dataset.baseTransform = layer.flip ? "scaleX(-1)" : "none";
       this.applyLayerStyles(image, layer);
       this.sceneLayers.appendChild(image);
     });
+  }
+
+  /**
+   * Get the intro scale for a specific layer index.
+   *
+   * Args:
+   *   layerIndex: Zero-based index of the layer above background.
+   */
+  getLayerIntroScale(layerIndex) {
+    if (layerIndex === -1) {
+      return this.parallaxIntroBackgroundScale;
+    }
+    const scale = this.parallaxIntroFirstLayerScale + layerIndex * this.parallaxIntroLayerScaleStep;
+    return Math.min(scale, this.parallaxIntroMaxLayerScale);
+  }
+
+  /**
+   * Prepare all scene elements for the parallax intro.
+   * Applies starting scales and performance hints.
+   */
+  prepareParallaxIntro() {
+    if (this.sceneBackground && !this.sceneBackground.classList.contains("is-hidden")) {
+      const scale = this.getLayerIntroScale(-1);
+      this.sceneBackground.style.transform = `scale(${scale})`;
+      this.sceneBackground.style.willChange = "transform";
+    }
+
+    if (this.sceneLayers) {
+      const layers = Array.from(this.sceneLayers.children);
+      layers.forEach((layer, index) => {
+        const scale = this.getLayerIntroScale(index);
+        const baseTransform = layer.dataset.baseTransform || "none";
+        const combinedTransform = baseTransform === "none" ? `scale(${scale})` : `${baseTransform} scale(${scale})`;
+        layer.style.transform = combinedTransform;
+        layer.style.willChange = "transform, opacity";
+      });
+    }
+  }
+
+  /**
+   * Play the parallax intro animation.
+   *
+   * Args:
+   *   durationMs: The duration of the intro animation.
+   */
+  async playParallaxIntro(durationMs) {
+    if (durationMs <= 0) {
+      this.finishParallaxIntro();
+      return;
+    }
+
+    const animations = [];
+
+    if (this.sceneBackground && !this.sceneBackground.classList.contains("is-hidden")) {
+      const scale = this.getLayerIntroScale(-1);
+      const anim = this.sceneBackground.animate(
+        [
+          { transform: `scale(${scale})` },
+          { transform: "scale(1)" }
+        ],
+        {
+          duration: durationMs,
+          easing: "cubic-bezier(0.2, 0, 0.4, 1)", // More natural "gliding" stop
+          fill: "forwards"
+        }
+      );
+      animations.push(anim);
+    }
+
+    if (this.sceneLayers) {
+      const layers = Array.from(this.sceneLayers.children);
+      layers.forEach((layer, index) => {
+        const scale = this.getLayerIntroScale(index);
+        const baseTransform = layer.dataset.baseTransform || "none";
+        const startTransform = baseTransform === "none" ? `scale(${scale})` : `${baseTransform} scale(${scale})`;
+        const endTransform = baseTransform === "none" ? "scale(1)" : `${baseTransform} scale(1)`;
+
+        const anim = layer.animate(
+          [
+            { transform: startTransform },
+            { transform: endTransform }
+          ],
+          {
+            duration: durationMs,
+            easing: "cubic-bezier(0.2, 0, 0.4, 1)",
+            fill: "forwards"
+          }
+        );
+        animations.push(anim);
+      });
+    }
+
+    this.activeIntroAnimations = animations;
+
+    if (animations.length > 0) {
+      await Promise.all(animations.map(anim => anim.finished)).catch(() => {
+        /* Ignore cancelled animations */
+      });
+    }
+
+    this.finishParallaxIntro();
+  }
+
+  /**
+   * Clean up after parallax intro completion.
+   */
+  finishParallaxIntro() {
+    this.activeIntroAnimations = [];
+
+    if (this.sceneBackground) {
+      this.sceneBackground.style.transform = "";
+      this.sceneBackground.style.willChange = "";
+    }
+
+    if (this.sceneLayers) {
+      Array.from(this.sceneLayers.children).forEach((layer) => {
+        layer.style.transform = layer.dataset.baseTransform === "none" ? "" : (layer.dataset.baseTransform || "");
+        layer.style.willChange = "";
+      });
+    }
+  }
+
+  /**
+   * Cancel any ongoing parallax intro animations.
+   */
+  cancelParallaxIntroAnimations() {
+    if (this.activeIntroAnimations.length > 0) {
+      this.activeIntroAnimations.forEach(anim => anim.cancel());
+      this.finishParallaxIntro();
+    }
   }
 }
