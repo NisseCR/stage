@@ -24,7 +24,7 @@ class SceneEngine {
     this.parallaxIntroBackgroundScale = 1.05;
     this.parallaxIntroFirstLayerScale = 1.10;
     this.parallaxIntroLayerScaleStep = 0.05;
-    this.parallaxIntroMaxLayerScale = 1.30;
+    this.parallaxIntroMaxLayerScale = 1.40;
 
     // Track active animations for cleanup
     this.activeIntroAnimations = [];
@@ -344,17 +344,25 @@ class SceneEngine {
     }
 
     const animations = [];
+    const easing = "cubic-bezier(0.22, 1, 0.36, 1)";
+    const holdOffset = 0.92;
 
     if (this.sceneBackground && !this.sceneBackground.classList.contains("is-hidden")) {
       const scale = this.getLayerIntroScale(-1);
+      const isVideo = this.sceneBackground.tagName.toLowerCase() === "video";
+      const finalScale = isVideo ? 1.001 : 1;
+      const startTransform = `scale(${scale})`;
+      const endTransform = `scale(${finalScale})`;
+
       const anim = this.sceneBackground.animate(
         [
-          { transform: `scale(${scale})` },
-          { transform: "scale(1)" }
+          { transform: startTransform, offset: 0 },
+          { transform: endTransform, offset: holdOffset },
+          { transform: endTransform, offset: 1 }
         ],
         {
           duration: durationMs,
-          easing: "cubic-bezier(0.2, 0, 0.4, 1)", // More natural "gliding" stop
+          easing: easing,
           fill: "forwards"
         }
       );
@@ -365,18 +373,22 @@ class SceneEngine {
       const layers = Array.from(this.sceneLayers.children);
       layers.forEach((layer, index) => {
         const scale = this.getLayerIntroScale(index);
+        const isVideo = layer.tagName.toLowerCase() === "video" || layer.classList.contains("scene-layer-video");
+        const finalScale = isVideo ? 1.001 : 1;
         const baseTransform = layer.dataset.baseTransform || "none";
+        
         const startTransform = baseTransform === "none" ? `scale(${scale})` : `${baseTransform} scale(${scale})`;
-        const endTransform = baseTransform === "none" ? "scale(1)" : `${baseTransform} scale(1)`;
+        const endTransform = baseTransform === "none" ? `scale(${finalScale})` : `${baseTransform} scale(${finalScale})`;
 
         const anim = layer.animate(
           [
-            { transform: startTransform },
-            { transform: endTransform }
+            { transform: startTransform, offset: 0 },
+            { transform: endTransform, offset: holdOffset },
+            { transform: endTransform, offset: 1 }
           ],
           {
             duration: durationMs,
-            easing: "cubic-bezier(0.2, 0, 0.4, 1)",
+            easing: easing,
             fill: "forwards"
           }
         );
@@ -402,13 +414,24 @@ class SceneEngine {
     this.activeIntroAnimations = [];
 
     if (this.sceneBackground) {
-      this.sceneBackground.style.transform = "";
+      const isVideo = this.sceneBackground.tagName.toLowerCase() === "video";
+      // Videos hold at 1.001 to prevent jitter
+      this.sceneBackground.style.transform = isVideo ? "scale(1.001)" : "";
       this.sceneBackground.style.willChange = "";
     }
 
     if (this.sceneLayers) {
       Array.from(this.sceneLayers.children).forEach((layer) => {
-        layer.style.transform = layer.dataset.baseTransform === "none" ? "" : (layer.dataset.baseTransform || "");
+        const isVideo = layer.tagName.toLowerCase() === "video" || layer.classList.contains("scene-layer-video");
+        const baseTransform = layer.dataset.baseTransform === "none" ? "" : (layer.dataset.baseTransform || "");
+        
+        if (isVideo) {
+          // Videos hold at 1.001 to prevent jitter; combine with any base transform (like flip)
+          layer.style.transform = baseTransform ? `${baseTransform} scale(1.001)` : "scale(1.001)";
+        } else {
+          layer.style.transform = baseTransform;
+        }
+        
         layer.style.willChange = "";
       });
     }
