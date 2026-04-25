@@ -1,6 +1,6 @@
 # Paracosm
 
-Paracosm is a local web application for running a D&D table with immersive visuals and audio.
+Paracosm is a local web application for running a TTRPG table with immersive visuals and audio.
 
 It is designed around two browser views:
 
@@ -8,11 +8,6 @@ It is designed around two browser views:
 - **Display page**: a read-only output view intended for streaming to Discord or showing on a second screen
 
 The goal is to keep the experience lightweight, flexible, and easy to use during a session while still supporting rich atmosphere through scene visuals and audio playback.
-
-## Project context
-
-This project is intended for tabletop roleplaying games, especially Dungeons & Dragons sessions.  
-The GM uses the control interface to drive the current state, while the display page shows the immersive output for players or stream viewers.
 
 The display is meant to support:
 - scene backgrounds
@@ -69,7 +64,7 @@ The application uses:
 
 ## Asset structure
 
-Assets are stored under `static/assets/` and grouped by type for clarity:
+Assets are stored under `static/assets/`:
 
 - `static/assets/audio/`
   - `music/`
@@ -79,97 +74,7 @@ Assets are stored under `static/assets/` and grouped by type for clarity:
 - `static/assets/video/`
 - `static/assets/scenes/`
 
-This structure keeps the project organized and makes future asset management easier.
-
-## Current features
-
-- GM and display pages are available
-- Live backend state is shared through a single source of truth
-- GM edits are synced through one endpoint
-- Display page listens for updates via SSE
-- Scene definitions are loaded from JSON
-- Music and ambience libraries are discovered from the filesystem
-- Static assets are served by FastAPI
-- Music and ambience playback use Web Audio reconciliation with fades
-
-## Current state model
-
-The application currently tracks:
-
-- active scene
-- selected music playlist
-- active ambience items
-- fade settings
-
-This structure is designed to support future visual and audio playback logic without needing a major refactor.
-
-## What is already working
-
-- application startup and routing
-- HTML templates for GM and display pages
-- SSE event delivery from backend to display
-- GM control flow wired to backend state changes
-- basic rendering of current state in both pages
-- asset scanning for scenes and audio libraries
-- Web Audio playback with fade-based reconciliation
-
-## Roadmap
-
-The next development steps are:
-
-### 1. GM UI completion
-Add the remaining control components needed to fully manage session state:
-- scene selection
-- playlist selection
-- ambience toggles
-- fade duration controls
-
-### 2. Display page rendering
-Continue refining the visual rendering layer:
-- background scene rendering
-- layered image/video support
-- active scene transitions
-- live state summaries as needed
-
-### 3. Audio engine polish
-Refine playback behavior for:
-- music crossfades on playlist changes
-- ambience fades on add/remove changes
-- smoother handling of edge cases and retries
-
-### 4. Visual polish
-Add styling and layout improvements once the control flow is stable.
-
-### 5. Session behavior refinements
-Future improvements may include:
-- smoother transitions
-- scene layering rules
-- pause/resume logic
-- configurable defaults
-- more advanced display effects
-
-## Development approach
-
-The project is being built in stages:
-
-1. establish the shared data model
-2. connect GM actions to backend state
-3. propagate changes to the display via SSE
-4. build the display rendering layer
-5. add audio playback and immersive effects
-6. refine the UI and polish the experience
-
-This keeps the codebase maintainable and makes it easier to verify that each layer works before moving to the next.
-
-## Notes
-
-This project is intended for local use on a single machine, with the GM controlling the display page in real time.  
-The current architecture is intentionally simple so it can grow cleanly as more immersive features are added.
-
-## Editor
-To access the scene editor, navigate to `/editor` or click "Editor" from the home page.
-
-### Happy Path Smoke Test
+### Scene editor Happy Path Smoke Test
 1. **Create**: 
    - Click `+ New Scene`.
    - Enter Name: `Smoke Test`, ID: `smoke-test`, Background: `gate.jpg`.
