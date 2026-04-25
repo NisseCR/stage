@@ -1,21 +1,25 @@
 # Paracosm
 
+<img width="800" height="450" alt="Paracosm" src="https://github.com/user-attachments/assets/d10ce075-636b-4152-a2ab-cfd6af7d4f12" />
+
 Paracosm is a local web application for running a TTRPG table with immersive visuals and audio.
 
 It is designed around two browser views:
 
-- **GM page**: the control surface used by the Game Master to edit the desired session state and sync it to the backend
 - **Display page**: a read-only output view intended for streaming to Discord or showing on a second screen
+- **GM page**: the control surface used by the Game Master to edit the desired session state and sync it to the backend
 
 The goal is to keep the experience lightweight, flexible, and easy to use during a session while still supporting rich atmosphere through scene visuals and audio playback.
 
-The display is meant to support:
+Paracosm allows the configuration of:
 - scene backgrounds
 - layered visuals
 - ambience playback
 - music playback
 - transition effects
 - future audio/visual syncing
+
+<img width="800" height="450" alt="Paracosm GM" src="https://github.com/user-attachments/assets/d628552e-1731-4507-aa55-e6c601c9f9f4" />
 
 ## Current architecture
 
