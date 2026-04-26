@@ -317,13 +317,14 @@ class AudioEngine {
 
     if (shouldCrossfade && previousState?.source && previousState?.gainNode) {
       await this.crossfadeMusic(previousState, gainNode, targetVolume);
+    } else if (shouldCrossfade) {
+      await this.fadeGainTo(gainNode, targetVolume, this.fadeSettings.music);
     } else {
       await this.fadeGainTo(gainNode, targetVolume, 0.01);
     }
 
     console.log("Playing music track:", track.name);
   }
-
   /**
      * Crossfade from the previous music source into the new one.
      *
