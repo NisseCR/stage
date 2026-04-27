@@ -30,6 +30,15 @@ class ActiveAmbience(BaseModel):
     ambience_id: str
 
 
+class ActiveArt(BaseModel):
+    """
+    Represent the currently active art handout.
+    """
+
+    visible: bool = False
+    art_id: str | None = None
+
+
 class FadeSettings(BaseModel):
     """
     Represent fade durations for the different state categories.
@@ -57,6 +66,7 @@ class AppStateSyncRequest(BaseModel):
     scene: ActiveScene | None = None
     music: ActivePlaylist | None = None
     ambiences: dict[str, ActiveAmbience] = Field(default_factory=dict)
+    art: ActiveArt = Field(default_factory=ActiveArt)
     show_debug: bool = True
     fade_settings: FadeSettings = Field(default_factory=FadeSettings)
     volume_settings: VolumeSettings = Field(default_factory=VolumeSettings)
@@ -70,6 +80,7 @@ class StateResponse(BaseModel):
     scene: ActiveScene | None = None
     music: ActivePlaylist | None = None
     ambiences: dict[str, ActiveAmbience] = Field(default_factory=dict)
+    art: ActiveArt = Field(default_factory=ActiveArt)
     show_debug: bool = True
     fade_settings: dict[str, Any] = Field(default_factory=dict)
     volume_settings: dict[str, Any] = Field(default_factory=dict)

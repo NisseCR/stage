@@ -242,6 +242,7 @@ async def get_library(request: Request) -> LibraryResponse:
         music_playlists=request.app.state.music_playlists,
         ambience_folders=request.app.state.ambience_folders,
         scenes=request.app.state.scenes,
+        art_library=request.app.state.art_library,
     )
 
 
@@ -261,6 +262,7 @@ async def sync_state(request: Request, body: AppStateSyncRequest) -> AppStateRes
         scene=body.scene,
         music=body.music,
         ambiences=body.ambiences,
+        art=body.art,
         show_debug=body.show_debug,
         fade_settings=body.fade_settings.model_dump(),
         volume_settings=body.volume_settings.model_dump(),

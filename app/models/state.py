@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.events import ActiveAmbience, ActivePlaylist, ActiveScene
+from app.schemas.events import ActiveAmbience, ActiveArt, ActivePlaylist, ActiveScene
 
 
 class AppState(BaseModel):
@@ -18,6 +18,7 @@ class AppState(BaseModel):
     scene: ActiveScene | None = None
     music: ActivePlaylist | None = None
     ambiences: dict[str, ActiveAmbience] = Field(default_factory=dict)
+    art: ActiveArt = Field(default_factory=ActiveArt)
     show_debug: bool = False
     fade_settings: dict[str, Any] = Field(
         default_factory=lambda: {

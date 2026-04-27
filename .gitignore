@@ -211,4 +211,5 @@ static/assets/**
 !static/assets/audio/
 !static/assets/images/
 !static/assets/video/
+!static/assets/art/
 !static/assets/**/.gitkeep

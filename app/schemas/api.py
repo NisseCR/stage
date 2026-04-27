@@ -21,6 +21,7 @@ class LibraryResponse(BaseModel):
     music_playlists: list[dict]
     ambience_folders: list[dict]
     scenes: list[dict]
+    art_library: list[dict]
 
 
 class AppStateResponse(StateResponse):
@@ -29,7 +30,3 @@ class AppStateResponse(StateResponse):
     """
 
     model_config = ConfigDict(from_attributes=True)
-
-    scene: ActiveScene | None = None
-    music: ActivePlaylist | None = None
-    ambiences: dict[str, ActiveAmbience] = {}

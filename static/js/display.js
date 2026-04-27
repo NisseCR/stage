@@ -25,6 +25,10 @@ async function initDisplayPage() {
     library.scenes.map((scene) => [scene.id, scene])
   );
 
+  const artMap = new Map(
+    library.art_library.map((art) => [art.id, art])
+  );
+
   const musicPlaylistMap = new Map(
     library.music_playlists.map((playlist) => [playlist.id, playlist])
   );
@@ -46,6 +50,12 @@ async function initDisplayPage() {
     ambienceTrackMap,
   });
 
+  const artEngine = new ArtEngine({
+    overlay: document.getElementById("art-handout-overlay"),
+    image: document.getElementById("art-handout-image"),
+    artMap,
+  });
+
   const displayPage = document.querySelector(".display-page");
   const joinOverlay = document.getElementById("join-overlay");
   const joinButton = document.getElementById("join-button");
@@ -64,12 +74,14 @@ async function initDisplayPage() {
 
     // Initialize audio context within user gesture
     await audioEngine.init();
+    artEngine.setUnlocked(true);
 
     // Reconcile with last received state if any
     if (lastState) {
       await Promise.all([
         sceneEngine.reconcile(lastState.scene?.scene_id ?? null),
-        audioEngine.reconcile(lastState)
+        audioEngine.reconcile(lastState),
+        artEngine.reconcile(lastState.art)
       ]);
     }
   });
@@ -112,13 +124,17 @@ async function initDisplayPage() {
 
     let scenePromise = Promise.resolve();
     let audioPromise = Promise.resolve();
+    let artPromise = Promise.resolve();
 
     if (isJoined) {
       scenePromise = sceneEngine.reconcile(state.scene?.scene_id ?? null);
       audioPromise = audioEngine.reconcile(state);
+      artPromise = artEngine.reconcile(state.art);
+    } else {
+      artEngine.reconcile(state.art); // Will be hidden but pendingArtState updated
     }
 
-    await Promise.all([scenePromise, audioPromise]);
+    await Promise.all([scenePromise, audioPromise, artPromise]);
   }
 
   eventSource.addEventListener("state_snapshot", async (event) => {

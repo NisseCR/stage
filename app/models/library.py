@@ -79,3 +79,14 @@ class AmbienceFolder(BaseModel):
     id: str
     name: str
     tracks: list[AmbienceTrack] = Field(default_factory=list)
+
+
+class ArtItem(BaseModel):
+    """
+    Represent a single art handout discovered from the file system.
+    """
+
+    id: str
+    name: str
+    src: str
+    category: str

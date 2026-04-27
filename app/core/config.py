@@ -15,6 +15,7 @@ class Settings:
         self.images_dir = self.assets_dir / "images"
         self.scenes_dir = self.base_dir / "data" / "scenes"
         self.video_dir = self.assets_dir / "video"
+        self.art_dir = self.assets_dir / "art"
 
 
 settings = Settings()

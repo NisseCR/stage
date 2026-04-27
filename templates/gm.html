@@ -25,12 +25,17 @@
         <span class="label">Ambiences:</span>
         <span id="current-ambiences" class="value">None</span>
       </div>
+      <div class="status-item">
+        <span class="label">Art:</span>
+        <span id="current-art" class="value">None</span>
+      </div>
     </div>
 
     <nav class="gm-tabs">
       <button class="tab-button active" data-tab="scenes">Scenes</button>
       <button class="tab-button" data-tab="music">Music</button>
       <button class="tab-button" data-tab="ambiences">Ambiences</button>
+      <button class="tab-button" data-tab="art">Art</button>
       <button class="tab-button" data-tab="config">Config</button>
       <a href="/editor" class="tab-button" style="text-decoration: none; margin-left: auto;">Editor</a>
     </nav>
@@ -49,6 +54,13 @@
 
     <section id="tab-ambiences" class="gm-tab-panel">
       <div id="ambience-list" class="gm-ambience-container"></div>
+    </section>
+
+    <section id="tab-art" class="gm-tab-panel">
+      <div id="art-controls" class="gm-art-controls">
+        <button id="hide-art-button" class="gm-button gm-button-danger">Hide Art</button>
+      </div>
+      <div id="art-list" class="gm-art-container"></div>
     </section>
 
     <section id="tab-config" class="gm-tab-panel">

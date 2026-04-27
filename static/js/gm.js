@@ -60,9 +60,12 @@ function createUiBindings() {
     currentScene: document.getElementById("current-scene"),
     currentMusic: document.getElementById("current-music"),
     currentAmbiences: document.getElementById("current-ambiences"),
+    currentArt: document.getElementById("current-art"),
     sceneList: document.getElementById("scene-list"),
     musicList: document.getElementById("music-list"),
     ambienceList: document.getElementById("ambience-list"),
+    artList: document.getElementById("art-list"),
+    hideArtButton: document.getElementById("hide-art-button"),
     fadeMusic: document.getElementById("fade-music"),
     fadeAmbience: document.getElementById("fade-ambience"),
     fadeScene: document.getElementById("fade-scene"),
@@ -89,6 +92,7 @@ function createDraftState(state) {
     scene: state.scene ?? null,
     music: state.music ?? null,
     ambiences: structuredClone(state.ambiences ?? {}),
+    art: structuredClone(state.art ?? { visible: false, art_id: null }),
     show_debug: state.show_debug ?? true,
     fade_settings: {
       music: state.fade_settings?.music ?? 5.0,
@@ -116,6 +120,7 @@ function createSyncPayload(draftState) {
     scene: draftState.scene,
     music: draftState.music,
     ambiences: draftState.ambiences,
+    art: draftState.art,
     show_debug: draftState.show_debug,
     fade_settings: draftState.fade_settings,
     volume_settings: draftState.volume_settings,
@@ -133,13 +138,13 @@ function createSyncPayload(draftState) {
 function bindUiEvents(ui, library, draftState) {
   bindFadeControls(ui, draftState);
   bindVolumeControls(ui, draftState);
-  bindTabs(ui);
+  bindTabs(ui, draftState, library);
 }
 
 /**
  * Bind tab button clicks to switch between panels.
  */
-function bindTabs(ui) {
+function bindTabs(ui, draftState, library) {
   ui.tabButtons.forEach(button => {
     button.addEventListener("click", () => {
       const targetTab = button.dataset.tab;
@@ -151,6 +156,14 @@ function bindTabs(ui) {
       });
     });
   });
+
+  // Hide Art button
+  if (ui.hideArtButton) {
+    ui.hideArtButton.addEventListener("click", () => {
+      draftState.art = { visible: false, art_id: null };
+      renderAll(ui, library, draftState);
+    });
+  }
 }
 
 /**
@@ -166,6 +179,7 @@ function renderAll(ui, library, draftState) {
   renderSceneList(ui.sceneList, library, draftState, ui);
   renderMusicList(ui.musicList, library, draftState, ui);
   renderAmbienceList(ui.ambienceList, library, draftState, ui);
+  renderArtLibrary(ui.artList, library.art_library, draftState, ui, library);
   renderFadeControls(ui, draftState);
   renderVolumeControls(ui, draftState);
 }
@@ -192,6 +206,16 @@ function renderCurrentState(ui, draftState) {
     ui.currentAmbiences.textContent = activeAmbiences.length > 0
       ? activeAmbiences.map(formatDisplayName).join(", ")
       : "None";
+  }
+
+  if (ui.currentArt) {
+    ui.currentArt.textContent = (draftState.art?.visible && draftState.art?.art_id)
+      ? draftState.art.art_id
+      : "None";
+  }
+
+  if (ui.showDebug) {
+    ui.showDebug.checked = draftState.show_debug;
   }
 }
 
@@ -530,6 +554,82 @@ async function syncState(payload) {
   }
 
   return response.json();
+}
+
+/**
+ * Render the art library grouped by category.
+ */
+function renderArtLibrary(container, artLibrary, draftState, ui, library) {
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!artLibrary || artLibrary.length === 0) {
+    container.innerHTML = "<p class='gm-empty-state'>No art handouts found.</p>";
+    return;
+  }
+
+  // Group by category
+  const categories = {};
+  artLibrary.forEach(art => {
+    if (!categories[art.category]) {
+      categories[art.category] = [];
+    }
+    categories[art.category].push(art);
+  });
+
+  // Render each category
+  Object.keys(categories).sort().forEach(catName => {
+    const section = document.createElement("section");
+    section.className = "gm-section";
+    
+    const h2 = document.createElement("h2");
+    h2.textContent = catName;
+    section.appendChild(h2);
+
+    const grid = document.createElement("div");
+    grid.className = "gm-art-grid";
+
+    categories[catName].forEach(art => {
+      const card = document.createElement("div");
+      card.className = "gm-card gm-art-card";
+      if (draftState.art?.visible && draftState.art?.art_id === art.id) {
+        card.classList.add("active");
+      }
+
+      const imgContainer = document.createElement("div");
+      imgContainer.className = "gm-art-thumbnail";
+      const img = document.createElement("img");
+      img.src = art.src;
+      img.alt = art.name;
+      imgContainer.appendChild(img);
+      card.appendChild(imgContainer);
+
+      const info = document.createElement("div");
+      info.className = "gm-card-info";
+      const name = document.createElement("span");
+      name.className = "gm-card-name";
+      name.textContent = art.name;
+      info.appendChild(name);
+      card.appendChild(info);
+
+      const actions = document.createElement("div");
+      actions.className = "gm-card-actions";
+      const showBtn = document.createElement("button");
+      showBtn.className = "gm-button";
+      showBtn.textContent = "Show";
+      showBtn.addEventListener("click", () => {
+        draftState.art = { visible: true, art_id: art.id };
+        renderAll(ui, library, draftState);
+      });
+      actions.appendChild(showBtn);
+      card.appendChild(actions);
+
+      grid.appendChild(card);
+    });
+
+    section.appendChild(grid);
+    container.appendChild(section);
+  });
 }
 
 document.addEventListener("DOMContentLoaded", initGmPage);

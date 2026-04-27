@@ -10,6 +10,10 @@
     <div id="scene-fade-overlay" class="scene-fade-overlay"></div>
   </div>
 
+  <div id="art-handout-overlay" class="art-handout-overlay is-hidden">
+    <img id="art-handout-image" class="art-handout-image" src="" alt="">
+  </div>
+
   <div id="join-overlay" class="join-overlay">
     <button id="join-button" class="join-button">Begin story</button>
   </div>
@@ -26,5 +30,6 @@
 {% block scripts %}
     <script src="/static/js/scene_engine.js"></script>
     <script src="/static/js/audio_engine.js"></script>
+    <script src="/static/js/art_engine.js"></script>
     <script src="/static/js/display.js"></script>
 {% endblock %}

@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.models.state import AppState
+from app.services.art_service import ArtService
 from app.services.audio_service import AudioService
 from app.services.event_service import EventService
 from app.services.scene_service import SceneService
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI):
     This runs once when the app starts and once when it shuts down.
     """
     audio_service: AudioService = AudioService(settings.audio_dir)
+    art_service: ArtService = ArtService(settings.art_dir)
     scene_service: SceneService = SceneService(
         settings.images_dir,
         settings.video_dir,
@@ -34,12 +36,16 @@ async def lifespan(app: FastAPI):
     app.state.app_state = AppState()
     app.state.event_service = EventService()
     app.state.audio_service = audio_service
+    app.state.art_service = art_service
     app.state.scene_service = scene_service
     app.state.music_playlists = [
         playlist.model_dump() for playlist in audio_service.scan_music_playlists()
     ]
     app.state.ambience_folders = [
         folder.model_dump() for folder in audio_service.scan_ambience_folders()
+    ]
+    app.state.art_library = [
+        art.model_dump() for art in art_service.scan_art_library()
     ]
     app.state.scenes = [scene.model_dump() for scene in scene_service.load_scenes()]
 

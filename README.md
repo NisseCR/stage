@@ -16,6 +16,7 @@ Paracosm allows the configuration of:
 - layered visuals
 - ambience playback
 - music playback
+- art handouts (temporary overlays)
 - transition effects
 - future audio/visual syncing
 
@@ -48,6 +49,9 @@ The application uses:
 - `app/services/audio_service.py`  
   Scans audio folders and builds the music/ambience library.
 
+- `app/services/art_service.py`  
+  Scans the art folder and builds the art handouts library.
+
 - `app/services/scene_service.py`  
   Loads scene definitions from JSON and resolves asset paths.
 
@@ -66,6 +70,9 @@ The application uses:
 - `static/js/audio_engine.js`  
   Reconciles music and ambience playback using the Web Audio API.
 
+- `static/js/art_engine.js`  
+  Reconciles art handout overlays on the display page.
+
 ## Asset structure
 
 Assets are stored under `static/assets/`:
@@ -73,6 +80,9 @@ Assets are stored under `static/assets/`:
 - `static/assets/audio/`
   - `music/`
   - `ambience/`
+
+- `static/assets/art/`
+  - Art files can be placed in subfolders to be grouped by category.
 
 - `static/assets/images/`
 - `static/assets/video/`

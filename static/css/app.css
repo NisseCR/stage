@@ -1107,3 +1107,104 @@ body {
 .preview-empty.is-hidden {
   display: none;
 }
+
+/* --- Art Handout Overlay --- */
+.art-handout-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000; /* Above scene and transitions */
+  pointer-events: none;
+  background-color: rgba(0, 0, 0, 0);
+  transition: background-color 0.5s ease;
+}
+
+.art-handout-overlay.is-visible {
+  pointer-events: auto;
+  background-color: rgba(0, 0, 0, 0.4); /* Dimming background */
+}
+
+.art-handout-image {
+  max-width: 92vw;
+  max-height: 92vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  
+  /* Fade/Pop transition */
+  opacity: 0;
+  transform: scale(0.95);
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.art-handout-overlay.is-visible .art-handout-image {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Blur the scene when art is active */
+.display-page.art-overlay-active .scene-stage {
+  filter: blur(8px) brightness(0.7);
+  transition: filter 0.5s ease;
+}
+
+/* --- GM Art Section --- */
+.gm-art-controls {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.gm-art-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.gm-art-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.gm-art-card.active {
+  border-color: var(--color-accent, #00d2ff);
+  box-shadow: 0 0 10px var(--color-accent-dim, rgba(0, 210, 255, 0.3));
+}
+
+.gm-art-thumbnail {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #1a1a1a;
+  border-radius: 4px 4px 0 0;
+}
+
+.gm-art-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.gm-art-card:hover .gm-art-thumbnail img {
+  transform: scale(1.05);
+}
+
+.gm-button-danger {
+  background-color: #d32f2f;
+  color: white;
+}
+
+.gm-button-danger:hover {
+  background-color: #b71c1c;
+}
