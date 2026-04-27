@@ -49,7 +49,23 @@ async function initGmPage() {
 
   bindUiEvents(ui, library, draftState);
   bindSyncButton(ui.syncButton, ui, library, draftState);
+  bindGlobalShortcuts(ui);
   renderAll(ui, library, draftState);
+}
+
+/**
+ * Bind global keyboard shortcuts.
+ */
+function bindGlobalShortcuts(ui) {
+  window.addEventListener("keydown", (event) => {
+    // Ctrl+S
+    if (event.ctrlKey && event.key === "s") {
+      event.preventDefault();
+      if (ui.syncButton && !ui.syncButton.disabled) {
+        ui.syncButton.click();
+      }
+    }
+  });
 }
 
 /**
@@ -635,10 +651,6 @@ function renderArtLibrary(container, artLibrary, draftState, ui, library) {
 
       const overlay = document.createElement("div");
       overlay.className = "tile-overlay";
-      const label = document.createElement("span");
-      label.className = "tile-label";
-      label.textContent = art.name;
-      overlay.appendChild(label);
       button.appendChild(overlay);
 
       grid.appendChild(button);
